@@ -8,11 +8,23 @@ cd "$SCRIPT_DIR"
 
 echo "=== Compilando opencode-config-manager ==="
 
+# Inyectar commit hash en _version.py
+GIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "")
+if [ -n "$GIT_HASH" ]; then
+    echo "Commit: $GIT_HASH"
+    sed -i.bak "s/__commit__ = \"dev\"/__commit__ = \"$GIT_HASH\"/" src/opencode_config_manager/_version.py
+fi
+
 # Limpiar builds anteriores
 rm -rf build dist
 
-# Compilar usando el .spec (mismo que Windows)
+# Compilar usando el .spec
 uv run pyinstaller opencode-config-manager.spec
+
+# Restaurar _version.py
+if [ -n "$GIT_HASH" ]; then
+    mv src/opencode_config_manager/_version.py.bak src/opencode_config_manager/_version.py
+fi
 
 # Verificar que se creó el ejecutable
 if [ -f "dist/ocm" ]; then

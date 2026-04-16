@@ -38,6 +38,20 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      - name: Inject version info
+        shell: bash
+        run: |
+          GIT_HASH=$(git rev-parse --short HEAD)
+          echo "Commit hash: $GIT_HASH"
+          # Inject version from tag if available
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            echo "Version from tag: $VERSION"
+            sed -i "s/__version__ = \".*\"/__version__ = \"$VERSION\"/" src/opencode_config_manager/_version.py
+          fi
+          sed -i "s/__commit__ = \"dev\"/__commit__ = \"$GIT_HASH\"/" src/opencode_config_manager/_version.py
+          cat src/opencode_config_manager/_version.py
+
       - name: Build executable
         run: uv run pyinstaller opencode-config-manager.spec
 

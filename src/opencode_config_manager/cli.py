@@ -18,6 +18,7 @@ import argparse
 from pathlib import Path
 
 from .config import ConfigManager
+from ._version import get_version_string
 from .commands.provider import cmd_provider_new, cmd_provider_list, cmd_provider_remove
 from .commands.scan import cmd_scan
 from .commands.update import cmd_update_provider, cmd_update_global
@@ -41,6 +42,12 @@ Ejemplos:
   ocm update [PROVIDER]      # Actualizar provider con caché
   ocm update                 # Actualizar todos los providers
         """
+    )
+
+    parser.add_argument(
+        "--version", "-V",
+        action="version",
+        version=get_version_string()
     )
 
     parser.add_argument(
