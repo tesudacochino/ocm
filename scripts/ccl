@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Wrapper script para Unix-like systems (Linux, macOS)
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# Usar uv si está disponible, sino usar python
+if command -v uv &> /dev/null; then
+    uv run opencode-config-manager "$@"
+elif command -v python3 &> /dev/null; then
+    python3 "$PROJECT_ROOT/src/opencode_config_manager/main.py" "$@"
+elif command -v python &> /dev/null; then
+    python "$PROJECT_ROOT/src/opencode_config_manager/main.py" "$@"
+else
+    echo "Error: No se encontró Python ni uv"
+    echo "Por favor instala Python o uv (https://github.com/astral-sh/uv)"
+    exit 1
+fi

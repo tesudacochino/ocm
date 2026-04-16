@@ -1,0 +1,19 @@
+[project]
+name = "opencode-config-manager"
+version = "0.1.0"
+description = "Gestor de providers locales para opencode"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31.0",
+]
+
+[project.scripts]
+opencode-config-manager = "opencode_config_manager.cli:main"
+opencode = "opencode_config_manager.cli:main"
+
+[tool.uv]
+dev-dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/opencode_config_manager"]
