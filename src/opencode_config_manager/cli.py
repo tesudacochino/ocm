@@ -28,8 +28,9 @@ from .commands.debug import cmd_debug_config
 
 def create_parser() -> argparse.ArgumentParser:
     """Crear el parser de argumentos CLI."""
+    version_str = get_version_string()
     parser = argparse.ArgumentParser(
-        description="Gestor de providers locales para opencode",
+        description=f"{version_str} - Gestor de providers locales para opencode",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Ejemplos:
