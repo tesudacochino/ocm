@@ -34,7 +34,6 @@ env/
 *~
 
 # uv
-uv.lock
 
 # Caché
 .provider_cache

@@ -1,6 +1,6 @@
 [project]
 name = "opencode-config-manager"
-version = "0.1.0"
+version = "1.0.0"
 description = "Gestor de providers locales para opencode"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,8 +12,15 @@ dependencies = [
 opencode-config-manager = "opencode_config_manager.cli:main"
 opencode = "opencode_config_manager.cli:main"
 
-[tool.uv]
-dev-dependencies = []
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.0",
+    "pyinstaller-hooks-contrib",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/opencode_config_manager"]
