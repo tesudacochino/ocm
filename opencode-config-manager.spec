@@ -1,9 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-import sys
-
-block_cipher = None
-
 a = Analysis(
     ['src/opencode_config_manager/__main__.py'],
     pathex=[],
@@ -27,17 +23,16 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
-    cipher=block_cipher,
     noarchive=False,
+    optimize=0,
 )
 
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
-    a.zipfiles,
     a.datas,
     [],
     name='ocm',
