@@ -1,33 +1,20 @@
-name: Build executables
+name: Release Binary
 
 on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - os: windows-latest
-            artifact_name: ocm.exe
-            asset_name: ocm.exe
-          - os: ubuntu-latest
-            artifact_name: ocm
-            asset_name: ocm-linux
-          - os: macos-latest
-            artifact_name: ocm
-            asset_name: ocm-mac
-
-    runs-on: ${{ matrix.os }}
-
+  build-windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Get short SHA
+        id: sha
+        shell: bash
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -41,47 +28,128 @@ jobs:
       - name: Inject version info
         shell: bash
         run: |
-          GIT_HASH=$(git rev-parse --short HEAD)
-          echo "Commit hash: $GIT_HASH"
-          # Inject version from tag if available
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            VERSION="${GITHUB_REF#refs/tags/v}"
-            echo "Version from tag: $VERSION"
-            sed -i.bak "s/__version__ = \".*\"/__version__ = \"$VERSION\"/" src/opencode_config_manager/_version.py
-          fi
-          sed -i.bak "s/__commit__ = \"dev\"/__commit__ = \"$GIT_HASH\"/" src/opencode_config_manager/_version.py
+          SHORT_SHA="${{ steps.sha.outputs.SHORT_SHA }}"
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "Version: $VERSION, Commit: $SHORT_SHA"
+          sed -i.bak "s/__version__ = \".*\"/__version__ = \"$VERSION\"/" src/opencode_config_manager/_version.py
+          sed -i.bak "s/__commit__ = \"dev\"/__commit__ = \"$SHORT_SHA\"/" src/opencode_config_manager/_version.py
           rm -f src/opencode_config_manager/_version.py.bak
           cat src/opencode_config_manager/_version.py
 
-      - name: Build executable
-        run: uv run pyinstaller opencode-config-manager.spec
-
-      - name: Rename artifact
-        shell: bash
-        run: |
-          if [ -f "dist/${{ matrix.artifact_name }}" ]; then
-            cp "dist/${{ matrix.artifact_name }}" "dist/${{ matrix.asset_name }}"
-          fi
+      - name: Build Windows binary
+        run: uv run python -m PyInstaller --clean opencode-config-manager.spec --noconfirm
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset_name }}
-          path: dist/${{ matrix.asset_name }}
+          name: ocm-windows
+          path: dist/ocm.exe
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get short SHA
+        id: sha
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Inject version info
+        run: |
+          SHORT_SHA="${{ steps.sha.outputs.SHORT_SHA }}"
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "Version: $VERSION, Commit: $SHORT_SHA"
+          sed -i "s/__version__ = \".*\"/__version__ = \"$VERSION\"/" src/opencode_config_manager/_version.py
+          sed -i "s/__commit__ = \"dev\"/__commit__ = \"$SHORT_SHA\"/" src/opencode_config_manager/_version.py
+          cat src/opencode_config_manager/_version.py
+
+      - name: Build Linux binary
+        run: uv run python -m PyInstaller --clean opencode-config-manager.spec --noconfirm
+
+      - name: Rename binary
+        run: mv dist/ocm dist/ocm-linux
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ocm-linux
+          path: dist/ocm-linux
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get short SHA
+        id: sha
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Inject version info
+        run: |
+          SHORT_SHA="${{ steps.sha.outputs.SHORT_SHA }}"
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "Version: $VERSION, Commit: $SHORT_SHA"
+          sed -i.bak "s/__version__ = \".*\"/__version__ = \"$VERSION\"/" src/opencode_config_manager/_version.py
+          sed -i.bak "s/__commit__ = \"dev\"/__commit__ = \"$SHORT_SHA\"/" src/opencode_config_manager/_version.py
+          rm -f src/opencode_config_manager/_version.py.bak
+          cat src/opencode_config_manager/_version.py
+
+      - name: Build macOS binary
+        run: uv run python -m PyInstaller --clean opencode-config-manager.spec --noconfirm
+
+      - name: Rename binary
+        run: mv dist/ocm dist/ocm-mac
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ocm-mac
+          path: dist/ocm-mac
 
   release:
-    needs: build
+    needs: [build-windows, build-linux, build-macos]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-
+    permissions:
+      contents: write
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: ocm-*
+          merge-multiple: false
+
+      - name: List artifacts
+        run: ls -la artifacts/*
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**/*
+          files: |
+            artifacts/ocm-windows/ocm.exe
+            artifacts/ocm-linux/ocm-linux
+            artifacts/ocm-mac/ocm-mac
+          draft: false
           generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
