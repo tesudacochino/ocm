@@ -1,5 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import sys
+
 block_cipher = None
 
 a = Analysis(
@@ -7,13 +9,24 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[],
-    hiddenimports=['opencode_config_manager', 'opencode_config_manager.cli', 'opencode_config_manager.config', 'opencode_config_manager.api', 'opencode_config_manager.commands', 'opencode_config_manager.commands.utils', 'opencode_config_manager.commands.provider', 'opencode_config_manager.commands.scan', 'opencode_config_manager.commands.update', 'opencode_config_manager.commands.cache', 'opencode_config_manager.commands.debug'],
+    hiddenimports=[
+        'opencode_config_manager',
+        'opencode_config_manager._version',
+        'opencode_config_manager.cli',
+        'opencode_config_manager.config',
+        'opencode_config_manager.api',
+        'opencode_config_manager.commands',
+        'opencode_config_manager.commands.utils',
+        'opencode_config_manager.commands.provider',
+        'opencode_config_manager.commands.scan',
+        'opencode_config_manager.commands.update',
+        'opencode_config_manager.commands.cache',
+        'opencode_config_manager.commands.debug',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
     cipher=block_cipher,
     noarchive=False,
 )

@@ -47,9 +47,10 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF#refs/tags/v}"
             echo "Version from tag: $VERSION"
-            sed -i "s/__version__ = \".*\"/__version__ = \"$VERSION\"/" src/opencode_config_manager/_version.py
+            sed -i.bak "s/__version__ = \".*\"/__version__ = \"$VERSION\"/" src/opencode_config_manager/_version.py
           fi
-          sed -i "s/__commit__ = \"dev\"/__commit__ = \"$GIT_HASH\"/" src/opencode_config_manager/_version.py
+          sed -i.bak "s/__commit__ = \"dev\"/__commit__ = \"$GIT_HASH\"/" src/opencode_config_manager/_version.py
+          rm -f src/opencode_config_manager/_version.py.bak
           cat src/opencode_config_manager/_version.py
 
       - name: Build executable
