@@ -10,10 +10,8 @@ from ..config import ConfigManager, ConfigUI
 def validate_config(config_data: dict) -> tuple[bool, list[str], list[str]]:
     """Validar integridad de la configuración según formato de opencode.ai.
 
-    El formato correcto para opencode.ai es:
-    - 'model': string en formato 'provider/model-id' (ej: 'ollama/llama3')
-    - 'provider': objeto con configuración del provider
-    - Opcional: 'ollama' para backwards compatibility
+    Basado en el schema oficial: https://opencode.ai/config.json
+    Ningún campo es obligatorio. Se validan tipos cuando están presentes.
     """
     errors = []
     warnings = []
@@ -23,44 +21,46 @@ def validate_config(config_data: dict) -> tuple[bool, list[str], list[str]]:
         errors.append("La configuración debe ser un objeto JSON")
         return False, errors, []
 
-    # Verificar model (campo obligatorio en formato opencode.ai)
+    # Verificar model (opcional, pero si existe debe tener formato correcto)
     model = config_data.get("model")
-    models = config_data.get("models")  # Soportar formato antiguo
-
-    if model is None and models is None:
-        errors.append("Falta campo 'model'. Debe ser en formato 'provider/model' (ej: 'ollama/llama3')")
-    elif model is not None:
+    if model is not None:
         if not isinstance(model, str):
             errors.append("Campo 'model' debe ser un string")
         elif "/" not in model:
-            errors.append("Campo 'model' debe ser en formato 'provider/model' (ej: 'ollama/llama3')")
+            warnings.append("Campo 'model' debería ser en formato 'provider/model' (ej: 'ollama/llama3')")
 
     # Verificar provider como objeto
     provider = config_data.get("provider")
     if provider is not None and not isinstance(provider, dict):
         errors.append("Campo 'provider' debe ser un objeto JSON")
 
-    # Verificar configuración opcional de ollama (backwards compatibility)
-    ollama_config = config_data.get("ollama")
-    if ollama_config is not None:
-        if not isinstance(ollama_config, dict):
-            errors.append("Campo 'ollama' debe ser un objeto")
-        elif "baseUrl" in ollama_config:
-            if not isinstance(ollama_config["baseUrl"], str):
-                errors.append("Campo 'ollama.baseUrl' debe ser un string")
+    # Verificar que hay al menos providers o model configurado
+    if not provider and not model:
+        warnings.append("No hay 'provider' ni 'model' configurado. Ejecuta: ocm new")
 
-    # Campos permitidos (según opencode.ai format)
+    # Verificar que cada provider tiene estructura correcta
+    if isinstance(provider, dict):
+        for pname, pconfig in provider.items():
+            if not isinstance(pconfig, dict):
+                errors.append(f"Provider '{pname}' debe ser un objeto")
+                continue
+            if "models" not in pconfig and "npm" in pconfig:
+                warnings.append(f"Provider '{pname}' no tiene modelos configurados")
+
+    # Campos válidos según schema de opencode.ai
     valid_top_level_fields = {
-        "$schema",  # Esquema de validación de opencode.ai
-        "model", "small_model", "provider",
-        "theme", "autoupdate", "share",
-        "permission", "tools", "agent", "command",
-        "instructions", "mcp", "formatter", "tui", "keybinds",
-        "disabled_providers", "ollama"
+        "$schema",
+        "logLevel", "server", "command", "skills", "watcher", "snapshot",
+        "plugin", "share", "autoshare", "autoupdate",
+        "disabled_providers", "enabled_providers",
+        "model", "small_model", "default_agent", "username",
+        "mode", "agent", "provider",
+        "mcp", "theme", "tui", "keybinds", "formatter",
+        "instructions", "permission", "tools", "ollama",
     }
-    for key in config_data.keys():
-        if key not in valid_top_level_fields:
-            errors.append(f"Campo no reconocido: '{key}'")
+    unknown_fields = [key for key in config_data.keys() if key not in valid_top_level_fields]
+    for key in unknown_fields:
+        warnings.append(f"Campo no reconocido en schema de opencode: '{key}'")
 
     return len(errors) == 0, errors, warnings
 
@@ -83,60 +83,17 @@ def cmd_debug_config(manager: ConfigManager, args):
     print("\n=== Análisis ===")
     is_valid, errors, warnings = validate_config(manager.config_data)
 
-    if is_valid:
+    if warnings:
+        print(f"[ADVERTENCIA] {len(warnings)} aviso(s):")
+        for w in warnings:
+            print(f"  ℹ {w}")
+
+    if is_valid and not errors:
         ConfigUI.print_success("Configuración válida")
     else:
-        ConfigUI.print_error(f"{len(errors)} problema(s) encontrado(s):")
+        ConfigUI.print_error(f"{len(errors)} error(es) encontrado(s):")
         for e in errors:
             print(f"  ✗ {e}")
 
-        if warnings:
-            print("\n[ADVERTENCIA]")
-            for w in warnings:
-                print(f"  ℹ {w}")
-
-        if ConfigUI.ask_yes_no("¿Intentar reparar automáticamente?"):
-            repair_count = 0
-
-            # Reparar 'models' -> 'model'
-            if "models" in manager.config_data:
-                models_value = manager.config_data["models"]
-                if isinstance(models_value, list) and models_value:
-                    manager.config_data["model"] = models_value[0]
-                    repair_count += 1
-                    print("  + Convertiendo 'models' → 'model'...")
-                del manager.config_data["models"]
-
-            # Eliminar campo 'providers' antiguo
-            if "providers" in manager.config_data:
-                del manager.config_data["providers"]
-                repair_count += 1
-                print("  + Eliminando campo 'providers' obsoleto...")
-
-            # Asegurar provider y model
-            if "provider" not in manager.config_data:
-                manager.config_data["provider"] = "ollama"
-                repair_count += 1
-                print("  + Agregando 'provider' por defecto...")
-
-            if "model" not in manager.config_data:
-                manager.config_data["model"] = "llama3"
-                repair_count += 1
-                print("  + Agregando 'model' por defecto...")
-
-            if repair_count > 0:
-                print(f"\n[REPARACIÓN] Se aplicaron {repair_count} correcciones")
-                print(f"\nContenido reparado:")
-                print(json.dumps(manager.config_data, indent=2, ensure_ascii=False))
-
-                if ConfigUI.ask_yes_no("¿Guardar configuración reparada?"):
-                    manager.save_config()
-                    ConfigUI.print_success("Configuración guardada correctamente")
-                else:
-                    print("\nOperación cancelada")
-            else:
-                print("\nNo se pudo realizar reparación automática")
-        else:
-            print("\nOperación finalizada sin cambios")
-
     print(f"\n=== Fin de validación ===\n")
+
