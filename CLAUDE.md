@@ -69,39 +69,37 @@ opencodeconfig/
 ### Flujo típico
 
 ```
-user → ocm new   → ConfigManager
-                  → ProviderScanner (escanea API, detecta tipo)
-                  → Guarda en caché
+user → ocm new        → ConfigManager
+                       → ProviderScanner (escanea API, detecta tipo)
+                       → Guarda en caché
 
-user → ocm scan  → ProviderScanner (API)
-                  → Compara con caché
-                  → Muestra: + nuevos, - eliminados
-                  → Actualiza caché
+user → ocm cache update → ProviderScanner (API)
+                       → Compara con caché
+                       → Muestra: + nuevos, - eliminados
+                       → Actualiza caché
 
-user → ocm update → Lee caché
-                   → Genera config opencode.ai
-                   → Actualiza opencode.json
+user → ocm update     → Lee caché
+                       → Genera config opencode.ai
+                       → Actualiza opencode.json
 ```
 
 ## Comandos principales
 
 ```bash
-# Gestión de providers
+# Principales → opencode.json
 ocm new                          # Asistente interactivo
-ocm list                         # Listar providers (alias: ls)
-ocm rm NAME                      # Eliminar provider (alias: remove)
+ocm list                         # Listar providers en opencode.json
+ocm rm NAME                      # Eliminar provider de opencode.json
+ocm update [PROVIDER]            # Escribir caché → opencode.json
 
-# Caché
-ocm scan [PROVIDER]              # Escanear y actualizar caché
-ocm cache show                   # Ver estado de caché
-ocm cache clear                  # Borrar caché
+# Caché → provider_cache.json
+ocm cache update [PROVIDER]       # Escanear APIs y actualizar caché
+ocm cache list                   # Listar providers en caché
+ocm cache rm NAME                # Eliminar provider de caché
+ocm cache clear                  # Borrar toda la caché
 
-# Actualización de opencode.json
-ocm update PROVIDER              # Actualizar provider específico
-ocm update                       # Actualizar todos los providers
-
-# Debug
-ocm debug config                 # Validar opencode.json
+# Configuración avanzada
+ocm config validate              # Validar opencode.json
 
 # Via uv
 uv run opencode-config-manager --help

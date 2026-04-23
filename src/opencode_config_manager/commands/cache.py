@@ -1,43 +1,65 @@
 """
-Comandos de gestión de caché.
+Comandos de gestión de caché (provider_cache.json).
 """
 
 from datetime import datetime
 
 from ..config import ConfigManager, ConfigUI
-from .provider import print_provider_info
+from .provider import print_provider_cache_info
 
 
-def cmd_show_cache(manager: ConfigManager, args):
-    """Mostrar estado de la caché en formato opencode.ai."""
+def cmd_cache_list(manager: ConfigManager, args):
+    """Listar providers en la caché."""
     manager.load_cache()
-    manager.load_config()
-
-    provider = manager.config_data.get("provider")
 
     cache_timestamp = manager.cache_data.get("cache_timestamp", 0)
     timestamp_str = datetime.fromtimestamp(cache_timestamp) if cache_timestamp else "Nunca"
-    ConfigUI.print_header(f"Estado de Caché (actualizada {timestamp_str})")
+    ConfigUI.print_header(f"Providers en Caché (actualizada {timestamp_str})")
 
-    if provider:
-        print(f"Provider: {provider}")
-    print()
+    providers = manager.cache_data.get("providers", {})
+    if not providers:
+        print("No hay providers en caché.")
+        print("Ejecuta: ocm provider new  o  ocm cache update [PROVIDER]")
+        return
 
-    # Mostrar caché de todos los providers
-    for provider_name, cache_info in manager.cache_data.get("providers", {}).items():
-        print_provider_info(provider_name, cache_info)
+    for provider_name, cache_info in providers.items():
+        print_provider_cache_info(provider_name, cache_info)
 
 
-def cmd_cache(manager: ConfigManager, args):
-    """Gestionar caché."""
+def cmd_cache_clear(manager: ConfigManager, args):
+    """Borrar toda la caché."""
     manager.load_cache()
 
-    if args.clear:
-        if ConfigUI.ask_yes_no("¿Borrar toda la caché?"):
-            manager.cache_data = {"cache_timestamp": 0, "providers": {}}
-            manager.save_cache()
-            ConfigUI.print_success("Caché borrada.")
-    elif args.show:
-        cmd_show_cache(manager, args)
-    else:
-        print("Uso: cache --show [PROVIDER]  |  cache --clear")
+    if ConfigUI.ask_yes_no("¿Borrar toda la caché?"):
+        manager.cache_data = {"cache_timestamp": 0, "providers": {}}
+        manager.save_cache()
+        ConfigUI.print_success("Caché borrada.")
+
+
+def cmd_cache_remove(manager: ConfigManager, args):
+    """Eliminar un provider de la caché (no afecta opencode.json)."""
+    manager.load_cache()
+
+    provider_name = args.provider if hasattr(args, 'provider') and args.provider else None
+
+    if not provider_name:
+        ConfigUI.print_error("No se especificó un nombre de provider.")
+        print("Uso: ocm cache rm <PROVIDER>")
+        return
+
+    providers = manager.cache_data.get("providers", {})
+    if provider_name not in providers:
+        ConfigUI.print_error(f"Provider '{provider_name}' no encontrado en caché.")
+        print("Providers en caché:")
+        for p in providers.keys():
+            print(f"  - {p}")
+        return
+
+    if not ConfigUI.ask_yes_no(f"¿Eliminar provider '{provider_name}' de la caché?"):
+        print("Operación cancelada.")
+        return
+
+    manager.cache_data["providers"].pop(provider_name, None)
+    manager.save_cache()
+    ConfigUI.print_success(f"Provider '{provider_name}' eliminado de caché.")
+    ConfigUI.print_info(f"Nota: opencode.json no se ha modificado. Usa 'ocm provider rm {provider_name}' para eliminar de opencode.json.")

@@ -42,7 +42,7 @@ def cmd_update_provider(manager: ConfigManager, args, provider: str = None):
     # Verificar si el provider existe en caché
     if provider not in manager.cache_data.get("providers", {}):
         ConfigUI.print_error(f"Provider '{provider}' no encontrado en caché.")
-        print("Ejecuta primero: ocm scan {provider}")
+        print("Ejecuta primero: ocm cache update {provider}")
         print("Proveedores disponibles en caché:")
         for p in manager.cache_data.get("providers", {}).keys():
             print(f"  - {p}")
@@ -63,7 +63,7 @@ def cmd_update_provider(manager: ConfigManager, args, provider: str = None):
     # Verificar si hay modelos en caché
     if not cache_models:
         ConfigUI.print_error("No hay modelos en caché para este provider.")
-        print("Ejecuta primero: ocm scan {provider}")
+        print("Ejecuta primero: ocm cache update {provider}")
         return
 
     # Crear backup ANTES de modificar
@@ -170,7 +170,7 @@ def cmd_update_global(manager: ConfigManager, args):
             ConfigUI.print_info(f"Usando provider encontrado en caché: {provider} (tipo: {provider_type})")
         else:
             ConfigUI.print_error(f"Provider '{provider}' no encontrado en caché.")
-            print("Ejecuta primero: ocm scan {provider}")
+            print("Ejecuta primero: ocm cache update {provider}")
             print("Proveedores disponibles en caché:")
             for p in manager.cache_data.get("providers", {}).keys():
                 print(f"  - {p} (tipo: {get_provider_type(p, manager)})")

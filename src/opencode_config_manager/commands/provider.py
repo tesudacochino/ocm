@@ -28,7 +28,26 @@ def detect_provider_type(base_url: str) -> tuple[str, list[str]]:
     return None, []
 
 
-def print_provider_info(provider_name: str, cache_info: dict):
+def print_provider_config_info(provider_name: str, provider_config: dict):
+    """Mostrar información de un provider desde opencode.json."""
+    name = provider_config.get("name", provider_name)
+    options = provider_config.get("options", {})
+    base_url = options.get("baseURL", "N/A")
+    models = provider_config.get("models", {})
+
+    print(f"{provider_name}:")
+    print(f"  Nombre: {name}")
+    print(f"  URL base: {base_url}")
+    if models:
+        print(f"  Modelos ({len(models)}):")
+        for model_id in models:
+            print(f"    - {model_id}")
+    else:
+        print(f"  Modelos: Ninguno configurado")
+    print()
+
+
+def print_provider_cache_info(provider_name: str, cache_info: dict):
     """Mostrar información de un provider desde la caché."""
     models = cache_info.get("models", [])
     last_scan = cache_info.get("last_scan", 0)
@@ -111,56 +130,54 @@ def cmd_provider_new(manager: ConfigManager, args):
 
 
 def cmd_provider_list(manager: ConfigManager, args):
-    """Listar providers desde caché."""
-    manager.load_cache()
+    """Listar providers desde opencode.json."""
+    manager.load_config()
 
-    ConfigUI.print_header("Providers en Caché")
+    ConfigUI.print_header("Providers en opencode.json")
+    print(f"Archivo: {manager.config_path}\n")
 
-    if not manager.cache_data.get("providers"):
-        print("No hay providers escaneados aún.")
-        print("Ejecuta: ocm scan [PROVIDER]")
+    providers = manager.config_data.get("provider", {})
+    if not providers or not isinstance(providers, dict):
+        print("No hay providers configurados en opencode.json.")
+        print("Ejecuta: ocm config update [PROVIDER]")
         return
 
-    for provider_name, cache_info in manager.cache_data.get("providers", {}).items():
-        print_provider_info(provider_name, cache_info)
+    for provider_name, provider_config in providers.items():
+        print_provider_config_info(provider_name, provider_config)
 
 
 def cmd_provider_remove(manager: ConfigManager, args):
-    """Eliminar un provider específico de la configuración."""
+    """Eliminar un provider de opencode.json (no afecta la caché)."""
     manager.load_config()
-    manager.load_cache()
 
     # Obtener el nombre del provider desde los argumentos
     provider_name = args.provider if hasattr(args, 'provider') and args.provider else None
 
     if not provider_name:
         ConfigUI.print_error("No se especificó un nombre de provider.")
-        print("Uso: ocm remove [PROVIDER_NAME]")
+        print("Uso: ocm provider rm <PROVIDER>")
         return
 
-    # Verificar si el provider existe en la configuración
+    # Verificar si el provider existe en opencode.json
     providers = manager.config_data.get("provider", {})
     if provider_name not in providers:
-        ConfigUI.print_error(f"Provider '{provider_name}' no encontrado en la configuración.")
+        ConfigUI.print_error(f"Provider '{provider_name}' no encontrado en opencode.json.")
         print("Providers disponibles:")
         for p in providers.keys():
             print(f"  - {p}")
         return
 
-    if not ConfigUI.ask_yes_no(f"¿Eliminar provider '{provider_name}'?"):
+    if not ConfigUI.ask_yes_no(f"¿Eliminar provider '{provider_name}' de opencode.json?"):
         print("Operación cancelada.")
         return
 
-    # Eliminar solo el provider específico del objeto provider
+    # Eliminar solo de opencode.json
     manager.config_data["provider"].pop(provider_name, None)
 
     # Si no quedan providers, limpiar el objeto provider
     if not manager.config_data.get("provider"):
         manager.config_data.pop("provider", None)
 
-    # También eliminar de la caché
-    manager.cache_data["providers"].pop(provider_name, None)
-    manager.save_cache()
-
     manager.save_config()
-    ConfigUI.print_success(f"Provider '{provider_name}' eliminado correctamente.")
+    ConfigUI.print_success(f"Provider '{provider_name}' eliminado de opencode.json.")
+    ConfigUI.print_info(f"Nota: la caché no se ha modificado. Usa 'ocm cache rm {provider_name}' para eliminar de caché.")

@@ -25,54 +25,38 @@ uv sync
 ## Uso rápido
 
 ```bash
-# Ver ayuda y versión
-ocm --help
-ocm --version
-
-# Crear un nuevo provider (asistente interactivo)
-ocm new
-
-# Listar providers configurados
-ocm list
-
-# Escanear modelos disponibles
-ocm scan
-
-# Actualizar opencode.json con los modelos detectados
-ocm update
+ocm new                          # Crear nuevo provider
+ocm cache update                   # Escanear modelos disponibles
+ocm update                       # Actualizar opencode.json
+ocm list                         # Ver providers configurados
 ```
 
 ## Comandos
 
-### Gestión de providers
+### Principales → `opencode.json`
 
 | Comando | Descripción |
 |---------|-------------|
 | `ocm new` | Asistente interactivo para añadir un provider |
-| `ocm list` | Listar providers configurados |
-| `ocm remove <nombre>` | Eliminar un provider |
+| `ocm list` | Listar providers en `opencode.json` |
+| `ocm rm <nombre>` | Eliminar provider de `opencode.json` |
+| `ocm update [nombre]` | Actualizar `opencode.json` con datos de caché |
 
-### Escaneo y caché
-
-| Comando | Descripción |
-|---------|-------------|
-| `ocm scan` | Escanear **todos** los providers |
-| `ocm scan <nombre>` | Escanear un provider específico |
-| `ocm cache show` | Ver estado de la caché |
-| `ocm cache clear` | Borrar la caché |
-
-### Actualizar opencode.json
+### Caché → `provider_cache.json`
 
 | Comando | Descripción |
 |---------|-------------|
-| `ocm update` | Actualizar con **todos** los providers en caché |
-| `ocm update <nombre>` | Actualizar solo un provider |
+| `ocm cache update` | Escanear **todos** los providers y actualizar caché |
+| `ocm cache update <nombre>` | Escanear un provider específico |
+| `ocm cache list` | Listar providers en caché |
+| `ocm cache rm <nombre>` | Eliminar provider de caché |
+| `ocm cache clear` | Borrar toda la caché |
 
-### Debug
+### Configuración avanzada
 
 | Comando | Descripción |
 |---------|-------------|
-| `ocm debug config` | Validar integridad de `opencode.json` |
+| `ocm config validate` | Validar integridad de `opencode.json` |
 
 ### Opciones globales
 
@@ -85,8 +69,10 @@ ocm update
 ## Flujo de trabajo
 
 ```
-ocm scan  →  Obtiene modelos de la API  →  provider_cache.json
-ocm update  →  Lee la caché  →  Escribe opencode.json
+ocm new         →  Crea provider       →  provider_cache.json
+ocm cache update →  Escanea APIs       →  provider_cache.json
+ocm update      →  Lee caché           →  opencode.json
+ocm list        →  Muestra config      ←  opencode.json
 ```
 
 **Ejemplo completo:**
@@ -96,7 +82,7 @@ ocm update  →  Lee la caché  →  Escribe opencode.json
 ocm new
 
 # 2. Escanear modelos disponibles
-ocm scan
+ocm cache update
 # Output: Modelos detectados:
 #   - gemma4:e4b
 #   - qwen3.5:27b
@@ -104,11 +90,14 @@ ocm scan
 # 3. Aplicar a opencode.json
 ocm update
 
-# 4. Verificar configuración
-ocm debug config
+# 4. Verificar qué quedó configurado
+ocm list
+
+# 5. Comparar con la caché (opcional)
+ocm cache list
 ```
 
-> **Nota:** `ocm update` usa datos de caché, no escanea en tiempo real. Ejecuta siempre `ocm scan` antes.
+> **Nota:** `ocm update` usa datos de caché, no escanea en tiempo real. Ejecuta siempre `ocm cache update` antes.
 
 ## Providers soportados
 
@@ -178,8 +167,8 @@ El archivo generado sigue el formato de [opencode.ai](https://opencode.ai):
 
 ```
 ~/.config/opencode/
-├── opencode.json         # Configuración de opencode.ai
-└── provider_cache.json   # Caché de modelos escaneados
+├── opencode.json         # Configuración de opencode.ai (ocm list/rm/update)
+└── provider_cache.json   # Caché de modelos escaneados (ocm cache ...)
 ```
 
 ## Compilación
