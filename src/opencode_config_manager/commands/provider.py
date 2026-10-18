@@ -57,7 +57,7 @@ def print_provider_config_info(provider_name: str, provider_config: dict):
             marker = "" if display == model_id else f" -> {display}"
             print(f"    - {model_id}{marker}{describe_model(entry)}")
     else:
-        print(f"  Modelos: Ninguno configurado")
+        print("  Modelos: Ninguno configurado")
     print()
 
 
@@ -85,7 +85,7 @@ def print_provider_cache_info(provider_name: str, cache_info: dict):
             marker = "" if display == model_id else f" -> {display}"
             print(f"    - {model_id}{marker}{describe_model(entry)}")
     else:
-        print(f"  Modelos: Ninguno escaneado")
+        print("  Modelos: Ninguno escaneado")
     print()
 
 

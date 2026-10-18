@@ -6,7 +6,42 @@ on:
       - 'v*'
 
 jobs:
+  tests:
+    name: Regresiones (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Lint (pyflakes)
+        run: uv run --with pyflakes python -m pyflakes src tests scripts
+
+      - name: Run regression suites
+        shell: bash
+        run: |
+          for fase in a b c d e; do
+            echo "::group::tests/test_fase_$fase.py"
+            uv run python tests/test_fase_$fase.py
+            echo "::endgroup::"
+          done
+
+      - name: Build wheel and sdist
+        run: uv build
+
   build-windows:
+    needs: tests
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +81,7 @@ jobs:
           path: dist/ocm.exe
 
   build-linux:
+    needs: tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -85,6 +121,7 @@ jobs:
           path: dist/ocm-linux
 
   build-macos:
+    needs: tests
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -125,7 +162,7 @@ jobs:
           path: dist/ocm-mac
 
   release:
-    needs: [build-windows, build-linux, build-macos]
+    needs: [tests, build-windows, build-linux, build-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -142,6 +179,25 @@ jobs:
       - name: List artifacts
         run: ls -la artifacts/*
 
+      # Las notas salen del CHANGELOG: la seccion que coincide con la etiqueta.
+      # Si alguien etiqueta una version que no esta en el CHANGELOG, falla en vez
+      # de publicar un release sin describir.
+      - name: Build release notes from CHANGELOG
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { dentro = 1; next }
+            /^## \[/ { dentro = 0 }
+            dentro { print }
+          ' CHANGELOG.md > release-body.md
+          if [ ! -s release-body.md ]; then
+            echo "::error::No hay seccion [[$VERSION]] en CHANGELOG.md"
+            exit 1
+          fi
+          echo "--- cuerpo del release ---"
+          cat release-body.md
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -150,6 +206,6 @@ jobs:
             artifacts/ocm-linux/ocm-linux
             artifacts/ocm-mac/ocm-mac
           draft: false
-          generate_release_notes: true
+          body_path: release-body.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

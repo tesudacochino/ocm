@@ -3,7 +3,6 @@ CLI - Interfaz de línea de comandos
 """
 
 import sys
-import os
 
 # Forzar UTF-8 para Windows (compilado con PyInstaller)
 if sys.platform == "win32":

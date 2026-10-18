@@ -244,7 +244,7 @@ def cmd_debug_config(manager: ConfigManager, args):
         ConfigUI.print_error("Archivo de configuración no encontrado.")
         return
 
-    print(f"\nContenido:")
+    print("\nContenido:")
     print(json.dumps(manager.config_data, indent=2, ensure_ascii=False))
 
     print("\n=== Análisis ===")
@@ -262,5 +262,5 @@ def cmd_debug_config(manager: ConfigManager, args):
         for e in errors:
             print(f"  ✗ {e}")
 
-    print(f"\n=== Fin de validación ===\n")
+    print("\n=== Fin de validación ===\n")
 
