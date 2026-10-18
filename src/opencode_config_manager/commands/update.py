@@ -17,7 +17,6 @@ from .encoded import encoded_entry, encoded_providers, print_encoded_notice
 from .utils import (
     build_provider_config,
     create_backup,
-    get_provider_type,
     merge_provider_config,
     provider_entry_from_config,
     refresh_cache_from_config,
@@ -121,8 +120,7 @@ def cmd_update_provider(manager: ConfigManager, args, provider: str = None, forc
             f"usa 'ocm new {provider}' para corregir la URL antes de actualizar."
         )
 
-    provider_type = get_provider_type(provider, manager)
-    desired = build_provider_config(provider, cache_info, provider_type)
+    desired = build_provider_config(provider, cache_info)
 
     configured = manager.config_data.get("provider")
     raw = configured.get(provider) if isinstance(configured, dict) else None
@@ -139,7 +137,7 @@ def cmd_update_provider(manager: ConfigManager, args, provider: str = None, forc
         return
 
     # Crear backup ANTES de modificar
-    backup_path = create_backup(manager.config_path, provider_name=provider)
+    backup_path = create_backup(manager.config_path)
     if backup_path:
         print(f"[BACKUP] Creado en: {backup_path}")
 

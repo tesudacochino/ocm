@@ -50,11 +50,6 @@ def encoded_entry(manager: ConfigManager, provider: str) -> dict:
     return entry if isinstance(entry, dict) else {}
 
 
-def encoded_model_ids(entry: dict) -> list:
-    """Ids de los modelos declarados en una entrada codificada."""
-    models = entry.get("models") if isinstance(entry, dict) else None
-    return list(models) if isinstance(models, dict) else []
-
 
 def format_notes(config_data: dict) -> list:
     """Avisos sobre providers declarados en uno u otro bloque.

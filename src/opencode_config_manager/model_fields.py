@@ -75,10 +75,6 @@ class FieldSpec:
     # Campo del que depende: si no tiene valor, el asistente se salta este
     depends_on: str = ""
 
-    @property
-    def parts(self) -> tuple:
-        return tuple(self.key.split("."))
-
 
 # Orden en el que los recorre el asistente
 FIELDS: tuple = (
@@ -127,9 +123,6 @@ def spec_for(key: str) -> FieldSpec:
     """Especificacion de un campo, aceptando sus alias."""
     return FIELDS_BY_KEY[canonical_key(key)]
 
-
-def is_field(key: str) -> bool:
-    return canonical_key(key) in FIELDS_BY_KEY
 
 
 def canonical_key(key: str) -> str:

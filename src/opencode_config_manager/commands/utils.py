@@ -50,7 +50,6 @@ TYPE_ALIASES = {
 }
 
 # Los dos unicos tipos que guarda ocm en la caché
-TIPOS = ("ollama", "vllm")
 
 # Como se enseña cada tipo al usuario
 TIPOS_ETIQUETA = {
@@ -85,13 +84,9 @@ def url_para_config(base_url: str) -> str:
     url = (base_url or "").rstrip("/")
     if not url:
         return url
-    sin_protocolo, _, resto = url.partition("://")
+    resto = url.partition("://")[2]
     camino = resto.partition("/")[2] if resto else ""
-    if camino in ("", "/"):
-        return url + "/v1"
-    if url.endswith("/v1"):
-        return url
-    return url
+    return url + "/v1" if camino in ("", "/") else url
 
 
 def get_provider_type(provider_name: str, manager: ConfigManager = None) -> str:
@@ -177,35 +172,7 @@ def refresh_cache_from_config(manager: ConfigManager, provider_name: str) -> boo
     return adopt_model_options(cache_entry, config_models)
 
 
-def get_provider_name(manager: ConfigManager, provider_name: str) -> str:
-    """Nombre visible (campo 'name') de un provider.
 
-    Prioridad: caché → opencode.json → el propio nombre del provider.
-    """
-    if manager.cache_data:
-        cached = manager.cache_data.get("providers", {}).get(provider_name, {}).get("name")
-        if cached:
-            return cached
-
-    configured = provider_entry_from_config(manager, provider_name).get("name")
-    if configured:
-        return configured
-
-    return provider_name
-
-
-def displayify(name: str) -> str:
-    """Nombre legible a partir de un id: 'ollama-local' -> 'Ollama Local'."""
-    if not name:
-        return name
-    parts = [p for p in str(name).replace("_", " ").replace("-", " ").split() if p]
-    return " ".join(p[:1].upper() + p[1:] for p in parts)
-
-
-def model_display_name(models: dict, model_id: str) -> str:
-    """Nombre visible guardado para un modelo, o el propio id."""
-    entry = models.get(model_id) or {}
-    return entry.get("name") or model_id
 
 
 def default_model_label(model_id: str, provider_label: str) -> str:
@@ -221,7 +188,7 @@ def default_model_label(model_id: str, provider_label: str) -> str:
 MAX_BACKUPS = 10
 
 
-def create_backup(config_path: Path, **_) -> str:
+def create_backup(config_path: Path) -> str:
     """Crear backup de la configuración y rotar los antiguos.
 
     Mantiene un máximo de MAX_BACKUPS archivos .bak.
@@ -249,17 +216,15 @@ def create_backup(config_path: Path, **_) -> str:
         return None
 
 
-def build_provider_config(provider_name: str, cache_info: dict,
-                          provider_type: str = None) -> dict:
+def build_provider_config(provider_name: str, cache_info: dict) -> dict:
     """Configuración "deseada" de un provider según la caché.
 
     Es lo que ocm quiere escribir; se combina con lo existente mediante
     `merge_provider_config`, no se asigna directamente.
 
-    `provider_type` se acepta por compatibilidad pero **ya no influye**: lo que ve
-    opencode (npm + baseURL + modelos) es igual para Ollama y para vLLM, porque los
-    dos atienden la API de OpenAI bajo /v1. El tipo solo decide que endpoint escanea
-    ocm, y eso se resuelve en commands/scan.py.
+    No depende del tipo de servidor: lo que ve opencode (npm + baseURL + modelos) es
+    igual para Ollama y para vLLM, porque los dos atienden la API de OpenAI bajo /v1.
+    El tipo solo decide que endpoint escanea ocm (commands/scan.py).
 
     Returns:
         {"name": ..., "options": {...}, "models": {...}}

@@ -425,7 +425,7 @@ def cmd_model_info(manager: ConfigManager, args):
 
     _seccion("Comprobaciones")
     vistos = set()
-    for aviso in list(avisos) + [nota for nota in _notas_plural(provider, modelos_plural)]:
+    for aviso in list(avisos) + _notas_plural(provider, modelos_plural):
         if aviso in vistos:
             continue
         vistos.add(aviso)
@@ -595,13 +595,11 @@ def cmd_model_remove(manager: ConfigManager, args):
             ConfigUI.print_info("Cancelado.")
             return
 
-    removed_any = False
     if model_id in models:
         models.pop(model_id)
         cache_info["models"] = models
         manager.cache_data.setdefault("providers", {})[provider] = cache_info
         manager.save_cache(touch=False)
-        removed_any = True
 
     if model_id in configured:
         configured.pop(model_id)
@@ -609,10 +607,6 @@ def cmd_model_remove(manager: ConfigManager, args):
         create_backup(manager.config_path)
         manager.config_data.setdefault("provider", {})[provider] = entry
         manager.save_config()
-        removed_any = True
 
-    if removed_any:
-        ConfigUI.print_success(f"Quitado {provider}/{model_id}.")
-        print("Revisa con: " + Colors.CYAN + f"ocm model list {provider}" + Colors.RESET)
-    else:
-        ConfigUI.print_info("No habia nada que quitar.")
+    ConfigUI.print_success(f"Quitado {provider}/{model_id}.")
+    print("Revisa con: " + Colors.CYAN + f"ocm model list {provider}" + Colors.RESET)

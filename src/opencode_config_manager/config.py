@@ -14,7 +14,6 @@ from .cache_models import migrate_cache
 # Cross-platform: Windows, Linux, macOS usan ~/.config/opencode
 DEFAULT_HOME = Path.home() / ".config" / "opencode"
 DEFAULT_CONFIG = DEFAULT_HOME / "opencode.json"
-DEFAULT_CACHE = DEFAULT_HOME / "provider_cache.json"
 
 
 class ConfigManager:
@@ -35,7 +34,6 @@ class ConfigManager:
         """Cargar configuración desde el archivo JSON.
 
         Si el archivo no existe o está vacío/corrupto, inicializa con un dict vacío.
-        No realiza migraciones — usar migrate_legacy_config() para eso.
         """
         if not self.config_path.exists():
             self.config_data = {}
@@ -56,29 +54,6 @@ class ConfigManager:
                 return self.config_data
 
         return self.config_data
-
-    def migrate_legacy_config(self):
-        """Migrar formato antiguo con 'providers' al nuevo formato 'provider'.
-
-        Debe llamarse explícitamente después de load_config() cuando se sospecha
-        que el archivo puede tener formato antiguo.
-        """
-        if self.config_data is None:
-            return
-
-        if "provider" not in self.config_data:
-            old_providers = self.config_data.get("providers", {})
-            if old_providers:
-                for provider_name, config in old_providers.items():
-                    if config.get("type") == "ollama":
-                        self.config_data["provider"] = "ollama"
-                        self.config_data["models"] = config.get("models", [])
-                        if config.get("options", {}).get("base_url"):
-                            self.config_data["ollama"] = {
-                                "baseUrl": config["options"]["base_url"]
-                            }
-                        break
-                self.save_config()
 
     def save_config(self):
         """Guardar configuración en el archivo JSON."""
@@ -149,10 +124,8 @@ class Colors:
     BOLD = "\033[1m"
     # Colores normales
     RED = "\033[91m"
-    GREEN = "\033[92m"
     YELLOW = "\033[93m"
     BLUE = "\033[94m"
-    MAGENTA = "\033[95m"
     CYAN = "\033[96m"
     WHITE = "\033[97m"
     # Colores brillantes
@@ -311,16 +284,3 @@ class ConfigUI:
     def print_header(text: str):
         """Imprimir encabezado."""
         print(f"\n{Colors.BOLD}{Colors.CYAN}=== {text} ==={Colors.RESET}\n")
-
-    @staticmethod
-    def print_provider(provider_name: str, provider_config: dict, models: list = None):
-        """Imprimir información de un provider."""
-        print(f"\n{Colors.BOLD}Provider:{Colors.RESET} {provider_name}")
-        print(f"  {Colors.CYAN}Type:{Colors.RESET} {provider_config.get('type', 'unknown')}")
-        print(f"  {Colors.CYAN}Options:{Colors.RESET}")
-        for key, value in provider_config.get("options", {}).items():
-            print(f"    {key}: {value}")
-        if models:
-            print(f"  {Colors.CYAN}Models ({len(models)}):{Colors.RESET}")
-            for model in models:
-                print(f"    - {model}")

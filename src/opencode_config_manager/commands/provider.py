@@ -25,17 +25,6 @@ from .utils import (
 )
 
 
-def detect_provider_type(base_url: str, api_key: str = None) -> tuple[str, list[str]]:
-    """Detectar automáticamente si es Ollama o vLLM escaneando la API.
-
-    Delega en ProviderScanner.probe, que mira la FORMA de la respuesta: ollama
-    tambien sirve /v1/models, asi que lo que decide es que exista /api/tags.
-
-    Retorna (tipo, lista de modelos), con tipo None si no responde a nada.
-    """
-    prueba = ProviderScanner.probe(base_url, api_key)
-    return prueba.tipo, prueba.models
-
 
 def print_provider_config_info(provider_name: str, provider_config: dict):
     """Mostrar información de un provider desde opencode.json."""

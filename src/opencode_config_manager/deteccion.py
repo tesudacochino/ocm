@@ -133,17 +133,6 @@ class Deteccion:
     def es_suposicion(self, clave) -> bool:
         return clave in self.suposiciones
 
-    def resumen(self) -> str:
-        """Una linea con lo detectado, para la salida de `ocm model detect`."""
-        if not self.valores:
-            return "nada"
-        bits = []
-        for clave, valor in self.valores.items():
-            if isinstance(valor, (list, tuple)):
-                valor = ",".join(str(item) for item in valor)
-            bits.append(f"{clave}={valor}")
-        return "  ".join(bits)
-
 
 class Explorador:
     """Consulta los endpoints de metadatos del servidor, una sola vez cada uno."""
@@ -195,35 +184,27 @@ MARCAS_MOTOR = (
 )
 
 
-def _campos_motor(entrada, props, show) -> tuple:
+def _campos_motor(entrada, props) -> tuple:
     """Los sitios donde un servidor suele escribir en que se ejecuta."""
     return (("owned_by", (entrada or {}).get("owned_by")),
             ("details", (entrada or {}).get("details")),
             ("root", (entrada or {}).get("root")),
             ("parent", (entrada or {}).get("parent")),
-            ("model_path", (props or {}).get("model_path")),
-            ("model", (show or {}).get("model") if isinstance(show, dict) else None))
+            ("model_path", (props or {}).get("model_path")))
 
 
-def _marca_motor(entrada, props, show) -> tuple:
+def _marca_motor(entrada, props) -> tuple:
     """(motor, pista que lo delata), o (None, None) si el servidor no suelta prenda."""
+    campos = _campos_motor(entrada, props)
     for motor, marcas in MARCAS_MOTOR:
         for marca in marcas:
-            for nombre, valor in _campos_motor(entrada, props, show):
+            for nombre, valor in campos:
                 if valor and marca in str(valor).lower():
                     return motor, f"{nombre} contiene '{marca}'"
     if props is not None and "modalities" in props:
         # 'modalities' en /props solo lo tiene llama-server
         return "llama.cpp", "GET /props (modalities)"
-    if show is not None:
-        return "ollama", "POST /api/show"
     return None, None
-
-
-def _servidor_de(entrada, props, show) -> str:
-    """Cual es el servidor, por las pistas que deja en los JSON."""
-    motor, _ = _marca_motor(entrada, props, show)
-    return motor
 
 
 def motor_de(entradas, props=None) -> tuple:
@@ -235,7 +216,7 @@ def motor_de(entradas, props=None) -> tuple:
     """
     votos = {}
     for model_id, entrada in (entradas or {}).items():
-        motor, evidencia = _marca_motor(entrada, props, None)
+        motor, evidencia = _marca_motor(entrada, props)
         if motor:
             votos.setdefault(motor, []).append((model_id, evidencia))
     if not votos:
@@ -561,7 +542,7 @@ def detectar_opciones(base_url, api_key, model_id, entrada=None, nombre=None,
     if props:
         _desde_props(props, d, textos)
 
-    d.servidor = _servidor_de(entrada, props, None)
+    d.servidor = _marca_motor(entrada, props)[0]
 
     # /api/show solo lo trae ollama; si ya sabemos quien es el servidor no se le molesta
     show = None

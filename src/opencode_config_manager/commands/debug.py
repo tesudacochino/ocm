@@ -6,6 +6,7 @@ import json
 
 from ..config import ConfigManager, ConfigUI
 from ..cache_models import MANAGED_MODEL_FIELDS
+from ..model_fields import MODALITIES
 from .encoded import format_notes
 
 # Claves de provider aceptadas por opencode según la clave raíz
@@ -19,8 +20,6 @@ MODEL_KEYS = set(MANAGED_MODEL_FIELDS) | {"disabled"}
 MODEL_KEYS_V2 = {"modelID", "family", "name", "releaseDate", "compatibility",
                  "package", "settings", "headers", "body", "capabilities",
                  "variants", "cost", "disabled", "limit"}
-
-MODALITIES = {"text", "audio", "image", "video", "pdf"}
 
 # Pistas para los errores más comunes al escribir la config a mano
 KEY_HINTS = {

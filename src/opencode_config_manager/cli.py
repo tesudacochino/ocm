@@ -296,12 +296,10 @@ def main(args: list = None):
             cmd_model_show(manager, parsed_args)
         elif sub == "info":
             cmd_model_info(manager, parsed_args)
-        elif sub in ("detect", "det"):
+        elif sub == "detect":
             cmd_model_detect(manager, parsed_args)
         elif sub in ("rm", "remove", "del"):
             cmd_model_remove(manager, parsed_args)
-        elif sub in ("list", "ls"):
-            cmd_model_list(manager, parsed_args)
         else:
             cmd_model_list(manager, parsed_args)
 

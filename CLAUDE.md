@@ -58,7 +58,6 @@ opencodeconfig/
 - Gestiona `opencode.json` (configuración del usuario)
 - Gestiona `provider_cache.json` (caché de modelos escaneados)
 - Soporta `--config` y `--home` para paths personalizados
-- `migrate_legacy_config()` para migrar formatos antiguos
 
 **`api.py`** - Clase `ProviderScanner` + `ScanResult`:
 - `scan_ollama()` → `GET /api/tags` → `ScanResult`
@@ -116,7 +115,7 @@ servidor en el ultimo escaneo). Reglas en `scan_single_provider`:
   eligio), tanto al crear (`build_provider_config`) como al mejorar uno existente en
   `merge_provider_config` sin `--force`; un nombre puesto a mano no se toca. Solo es
   etiqueta: la clave del modelo, lo que viaja a la API, no cambia
-- `get_provider_type()` con alias (`llama.cpp`, `lmstudio`, ...), `displayify()`
+- `get_provider_type()` con alias (`llama.cpp`, `lmstudio`, ...)
 
 **`model_fields.py`** - Que se puede configurar en un modelo (unica fuente de verdad):
 - `FIELDS`: lista de `FieldSpec(key, label, kind, help, presets, advanced, depends_on)`
@@ -170,7 +169,7 @@ servidor en el ultimo escaneo). Reglas en `scan_single_provider`:
   `~/.cache/opencode/models.json`) → `_desde_nombre`, que marca lo suyo como
   `suposicion`. El `name`, el `status` y lo experimental **jamás** salen del registro,
   y el video nunca se adivina
-- `_servidor_de()` / `_marca_motor()`: con las pistas de los JSON (`MARCAS_MOTOR`:
+- `_marca_motor()`: con las pistas de los JSON (`MARCAS_MOTOR`:
   `owned_by`, `details`, `root`, `parent`, `model_path`) deducen llama.cpp / ollama /
   vllm / sglang / lmstudio **y la prueba concreta** de donde sale; sin pista, dicen
   `None` (no se inventa). `motor_de()` hace mayoria sobre los modelos y es lo que se
@@ -217,8 +216,8 @@ servidor en el ultimo escaneo). Reglas en `scan_single_provider`:
 - `apply_provider_fields(manager, provider, cache_info, fields, backup_done)`:
   vuelca `name|baseUrl|apiKey|npm` en caché y en `opencode.json`; deja backup con
   `create_backup()` antes de la primera escritura
-- `_config_url()`: misma convencion que `build_provider_config` (la caché guarda
-  el host pelado, el config lleva `/v1`)
+- La URL de `options.baseURL` sale de `url_para_config()` (la caché guarda el host
+  pelado, el config lleva `/v1`)
 - `ask_api_style_fields()` es el menu del SDK (`utils.API_STYLES`); lo reutiliza
   `provider.ask_api_style` en `ocm new`
 - `_prune_gone_models()`: unicos lugares, junto a `ocm model rm`, donde se borra

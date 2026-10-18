@@ -130,10 +130,6 @@ def model_ids(models) -> list[str]:
     return list(normalize_models(models).keys())
 
 
-def managed_options(entry: dict) -> dict:
-    """Solo las opciones de modelo que ocm escribe en opencode.json."""
-    return {k: v for k, v in (entry or {}).items() if k in MANAGED_MODEL_FIELDS and k != "id"}
-
 
 def set_model_option(cache_entry: dict, model_id: str, key: str, value) -> dict:
     """Fijar (o borrar, con value=None) una opcion de un modelo en la caché."""

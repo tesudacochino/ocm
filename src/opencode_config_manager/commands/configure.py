@@ -52,16 +52,6 @@ def mask_secret(secret: str) -> str:
     return f"{secret[:4]}{'*' * 6}{secret[-4:]}"
 
 
-def _config_url(base_url: str, provider_type: str = None) -> str:
-    """URL que va en `options.baseURL` de opencode.json.
-
-    Misma convencion que `build_provider_config`: la caché guarda el host pelado
-    y en el config lleva el sufijo /v1. `provider_type` se ignora a proposito: los
-    dos tipos sirveen la API de OpenAI bajo /v1, asi que la URL no cambia segun cual.
-    """
-    return url_para_config(base_url or "")
-
-
 def ask_optional(label: str, current: str = "", hint: str = "", secret: bool = False):
     """Pregunta un campo de texto del provider.
 
@@ -91,7 +81,6 @@ def apply_provider_fields(manager: ConfigManager, provider: str, cache_info: dic
         numero de escrituras realizadas
     """
     writes = 0
-    provider_type = cache_info.get("provider_type") or get_provider_type(provider, manager)
     entry = provider_entry_from_config(manager, provider)
 
     for key, value in fields.items():
@@ -132,7 +121,7 @@ def apply_provider_fields(manager: ConfigManager, provider: str, cache_info: dic
             if options.pop("baseURL", None) is not None:
                 changed_here = True
         else:
-            wanted = _config_url(fields["baseUrl"], provider_type)
+            wanted = url_para_config(fields["baseUrl"])
             if options.get("baseURL") != wanted:
                 options["baseURL"] = wanted
                 changed_here = True

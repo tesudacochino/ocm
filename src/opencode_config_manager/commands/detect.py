@@ -288,8 +288,6 @@ def cmd_model_detect(manager: ConfigManager, args):
         return
 
     seleccion = _seleccionar(args, modelos, provider)
-    if seleccion is None:
-        return
     if not seleccion:
         return
 
