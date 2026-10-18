@@ -37,6 +37,7 @@ from .commands.model import (
 from .commands.configure import cmd_configure
 from .commands.encoded import cmd_config_to_singular
 from .commands.options import cmd_model_options, cmd_model_show
+from .commands.detect import cmd_model_detect
 from .commands.debug import cmd_debug_config
 
 
@@ -147,6 +148,25 @@ Flujo típico:
                             help="Incluir las opciones avanzadas, tambien sin valor")
     model_info.add_argument("--json", action="store_true",
                             help="Volcar solo el JSON efectivo del modelo")
+
+    model_detect = model_sub.add_parser(
+        "detect",
+        help="Averiguar opciones del modelo (vision, tools, contexto) preguntando al servidor")
+    model_detect.add_argument("provider", nargs="?", help="Provider (se pregunta si se omite)")
+    model_detect.add_argument("model", nargs="?", help="Modelo (se pregunta si se omite)")
+    model_detect.add_argument("--all", "-a", action="store_true",
+                              help="Repasar todos los modelos del provider")
+    model_detect.add_argument("--apply", action="store_true",
+                              help="Escribir en la cache lo que se detecte (solo rellena huecos)")
+    model_detect.add_argument("--force", action="store_true",
+                              help="Con --apply, actualizar tambien lo que ya tenias puesto")
+    model_detect.add_argument("--probar", action="store_true",
+                              help="Mandar una imagen 1x1 para ver si el modelo la acepta "
+                                   "(gasta una peticion minima)")
+    model_detect.add_argument("--no-registro", action="store_true",
+                              help="No consultar el registro de opencode (models.dev)")
+    model_detect.add_argument("--json", action="store_true",
+                              help="Volcar la deteccion como JSON")
 
     model_rm = model_sub.add_parser("rm", aliases=["remove", "del"],
                                     help="Quitar un modelo de la cache y de opencode.json")
@@ -271,6 +291,8 @@ def main(args: list = None):
             cmd_model_show(manager, parsed_args)
         elif sub == "info":
             cmd_model_info(manager, parsed_args)
+        elif sub in ("detect", "det"):
+            cmd_model_detect(manager, parsed_args)
         elif sub in ("rm", "remove", "del"):
             cmd_model_remove(manager, parsed_args)
         elif sub in ("list", "ls"):

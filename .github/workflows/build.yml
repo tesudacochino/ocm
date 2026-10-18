@@ -31,9 +31,12 @@ jobs:
       - name: Run regression suites
         shell: bash
         run: |
-          for fase in a b c d e f; do
-            echo "::group::tests/test_fase_$fase.py"
-            uv run python tests/test_fase_$fase.py
+          # Se recorren los ficheros, no una lista fija: asi no hay que tocar
+          # el workflow cada vez que se anade una fase.
+          shopt -s nullglob
+          for fichero in tests/test_fase_*.py; do
+            echo "::group::$fichero"
+            uv run python "$fichero"
             echo "::endgroup::"
           done
 

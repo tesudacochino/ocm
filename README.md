@@ -63,6 +63,7 @@ ocm rename mole                    # Cambiar el nombre visible del provider
 | `ocm model list [nombre]` | Listar modelos de un provider con su nombre visible |
 | `ocm model name [nombre] [modelo]` | Cambiar el nombre visible de un modelo |
 | `ocm model options [nombre] [modelo]` | Configurar contexto, modalidades y capacidades de un modelo |
+| `ocm model detect [nombre] [modelo]` | Preguntar al servidor por contexto, modalidades y capacidades (propuesta; `--apply` guarda) |
 | `ocm model info [nombre] [modelo]` | Ver la configuración de un modelo en claro (solo lectura) |
 | `ocm model show [nombre] [modelo]` | Ver el JSON tal cual de un modelo |
 | `ocm model rm [nombre] [modelo]` | Quitar un modelo que ya no existe en el servidor |
@@ -108,6 +109,7 @@ ocm update       →  Lee caché         →  opencode.json  (solo añade, no pi
 ocm list         →  Muestra config    ←  opencode.json
 ocm configure    →  Repasa un provider →  caché + opencode.json  (con backup)
 ocm model options → Opciones de modelo →  caché + opencode.json
+ocm model detect  →  Pregunta al servidor →  caché  (sólo con --apply)
 ocm model rm     →  Quita un modelo    ←  caché + opencode.json
 ```
 
@@ -133,7 +135,9 @@ ocm list
 ocm cache list
 
 # 6. Ajustar opciones de un modelo (contexto, visión, herramientas)
-ocm model options mole qwen3:14b
+ocm model detect mole qwen3:14b --apply    # preguntarle al servidor qué sabe
+ocm model options mole qwen3:14b           # repasarlas a mano si hace falta
+ocm update mole                              # y llevarlas a opencode.json
 
 # 7. Cambiar la URL del provider o repasar todo (ofrece escaneo y limpieza)
 ocm configure mole
@@ -376,6 +380,62 @@ arreglarlo. Si el modelo vive sólo en el bloque plural `providers` —el que op
 
 Es de solo lectura: no adopta opciones en la caché ni escribe backups, así que se
 puede consultar con la misma calma que un `cat`.
+
+### Detectar opciones: `ocm model detect`
+
+Rellenar a mano el contexto, las modalidades y el tool calling de diez modelos es
+tedioso y, encima, el servidor normalmente ya lo sabe. Esta orden lo pregunta y
+**propone**: enseña qué ha averiguado, de dónde y qué cambiaría, y no escribe nada
+hasta que le dices `--apply`.
+
+```bash
+ocm model detect tokens                     # pregunta a todos los modelos y enseña el plan
+ocm model detect tokens default --apply     # guarda lo que aún no tengas puesto
+ocm model detect chati --all --apply        # igual, sin preguntar qué modelos
+ocm model detect mole qwen3:14b --force     # también los valores que ya existían
+ocm model detect mole qwen3:14b --probar    # manda una imagen 1x1 y mira si la acepta
+ocm model detect mole --all --json          # salida para scripts
+```
+
+Cada modelo sale en un cuadro con el valor actual, el detectado y la fuente:
+
+```
+tokens/default   [llama.cpp]
+  campo              ahora             detectado         de donde
+  ---------------------------------------------------------------------------
+  limit.context      -                 131072            GET /props (n_ctx)
+  modalities.input   -                 text,image,video  GET /props (modalities)
+  modalities.output  -                 text              GET /props (modalities)
+  tool_call          -                 si                GET /props (supports_tools)
+  reasoning          -                 si                registro opencode (qwen/qwen3-vl)
+```
+
+Qué se consulta, y en este orden de confianza:
+
+| Fuente | Quién la responde | Qué dice |
+|--------|-------------------|----------|
+| `GET /props` | llama.cpp / llama-server | modalidades, `supports_tools`, `n_ctx` |
+| `POST /api/show` | ollama y sus clones | `capability` (vision, tools), `model_info` (contexto, frames) |
+| `GET /api/tags` / `GET /v1/models` | ollama / vLLM / SGLang | `max_model_len`, `capabilities`, `root` del repo |
+| `~/.cache/opencode/models.json` | opencode (models.dev) | contexto, modalidades, reasoning, tools de modelos conocidos |
+| El nombre del modelo | — | **sólo una pista**: `-VL`, `vision`, `instruct`… |
+| `POST /v1/chat/completions` (`--probar`) | el servidor | si acepta o rechaza una imagen de verdad |
+
+Reglas que cumple siempre:
+
+- **Sin `--apply` no toca nada.** Ni la caché ni `opencode.json`.
+- `--apply` **rellena huecos**: lo que pusiste a mano se respeta (aparece como
+  *ya lo tenias puesto*) y sólo `--force` lo sustituye.
+- Lo detectado se guarda en la **caché** con su procedencia (`opciones_fuente`),
+  que nunca viaja a `opencode.json`; se ve en la ficha de `ocm model info` y en el
+  asistente de `ocm model options`, que avisa cuando un valor viene sólo de una
+  pista del nombre.
+- Cuando una opción viene de una suposición, va marcada: no se vende como cierto lo
+  que el servidor no confirmó.
+- Nunca se inventan: el vídeo, el nombre visible, el `status` y lo experimental no
+  se sacan del registro ni del nombre.
+- Al terminar recuerda que falta `ocm update <provider>` para que aterrice en
+  `opencode.json`.
 
 ### Reconfigurar un provider: `ocm configure`
 

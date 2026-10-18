@@ -18,9 +18,11 @@ ya existe en `opencode.json`, se escribe alli en el mismo momento.
 """
 
 import json
+from datetime import datetime
 
 from ..config import ConfigManager, ConfigUI, Colors
 from ..cache_models import normalize_models
+from ..deteccion import CLAVE_DETECTADO, CLAVE_FUENTES
 from ..model_fields import (
     KEEP,
     coerce,
@@ -109,6 +111,29 @@ def ask_field(spec, current):
             ConfigUI.print_warning(str(error))
 
 
+def _fuentes_deteccion(entry: dict) -> dict:
+    """Lo que anoto `ocm model detect` sobre las opciones de este modelo."""
+    fuentes = entry.get(CLAVE_FUENTES)
+    return fuentes if isinstance(fuentes, dict) else {}
+
+
+def _contar_deteccion(entry: dict):
+    """Dejar claro, antes de repasar los campos, quien puso cada valor."""
+    fuentes = _fuentes_deteccion(entry)
+    if not fuentes:
+        return
+    cuando = ""
+    marca = entry.get(CLAVE_DETECTADO)
+    if isinstance(marca, int):
+        cuando = ", " + datetime.fromtimestamp(marca).strftime("%Y-%m-%d %H:%M")
+    print(f"{Colors.WHITE}  Opciones que puso 'ocm model detect'{cuando}:{Colors.RESET}")
+    for clave in sorted(fuentes):
+        origen = str(fuentes[clave])
+        if "suposicion" in origen.lower():
+            origen = Colors.YELLOW + origen + " (una pista, no una prueba)" + Colors.RESET
+        print(f"    {clave:<20} {origen}")
+
+
 def configure_model_entry(entry: dict, advanced: bool = False, only=None,
                           header: str = "") -> dict:
     """Recorrer los campos de un modelo preguntando uno por uno.
@@ -137,10 +162,18 @@ def configure_model_entry(entry: dict, advanced: bool = False, only=None,
         print(f"{Colors.WHITE}  Sin opciones guardadas: lo de entre corchetes es lo que"
               f" opencode asume; Intro lo deja sin escribir{Colors.RESET}")
 
+    _contar_deteccion(entry)
+    fuentes = _fuentes_deteccion(entry)
+
     changes = {}
     for spec in specs:
         if spec.depends_on and not get_value(entry, spec.depends_on):
             continue
+
+        if "suposicion" in str(fuentes.get(spec.key, "")).lower() \
+                and get_value(entry, spec.key) not in (None, "", [], {}):
+            print(f"{Colors.YELLOW}  ! {spec.key} lo puso una pista del nombre,"
+                  f" no una prueba{Colors.RESET}")
 
         value = ask_field(spec, get_value(entry, spec.key))
         if value is STOP:

@@ -11,6 +11,7 @@ from datetime import datetime
 
 from ..config import ConfigManager, ConfigUI, Colors
 from ..cache_models import normalize_models, set_model_option
+from ..deteccion import CLAVE_DETECTADO, CLAVE_FUENTES
 from ..model_fields import (
     EFFECTIVE_DEFAULTS,
     describe_model,
@@ -212,8 +213,12 @@ def _resumen_valor(valor) -> str:
     return texto if len(texto) <= 72 else texto[:69] + "..."
 
 
-def _filas_opciones(entrada: dict, avanzado: bool):
-    """Una linea por campo, con el valor que opencode va a aplicar de verdad."""
+def _filas_opciones(entrada: dict, avanzado: bool, fuentes: dict = None):
+    """Una linea por campo, con el valor que opencode va a aplicar de verdad.
+
+    `fuentes` (lo que guardo `ocm model detect`) sale al lado, para poder
+    decir si un valor es una prueba del servidor o una pista del nombre.
+    """
     for spec in visible_fields(avanzado):
         if spec.key == "name":
             continue  # sale arriba, en la identidad del modelo
@@ -240,6 +245,13 @@ def _filas_opciones(entrada: dict, avanzado: bool):
             texto = ", ".join(str(item) for item in items)
         else:
             texto = format_value(spec, valor)
+
+        if not vacio and fuentes and fuentes.get(spec.key):
+            origen = fuentes[spec.key]
+            if "suposicion" in origen.lower():
+                nota += Colors.YELLOW + f"   ({origen}; revisalo)" + Colors.RESET
+            else:
+                nota += Colors.WHITE + f"   ({origen})" + Colors.RESET
 
         _fila(spec.label, texto + nota)
 
@@ -389,9 +401,11 @@ def cmd_model_info(manager: ConfigManager, args):
               f"  'ocm cache update {provider}'")
 
     _seccion("Opciones del modelo")
-    _filas_opciones(efectiva, bool(getattr(args, "advanced", False)))
+    _filas_opciones(efectiva, bool(getattr(args, "advanced", False)),
+                    fuentes=(en_cache or {}).get(CLAVE_FUENTES) or {})
 
     ajenas = sorted((set(en_cache or {}) | set(en_config or {})) - _PROPIAS)
+    ajenas = [c for c in ajenas if c not in (CLAVE_FUENTES, CLAVE_DETECTADO)]
     ajenas = [c for c in ajenas if not (c == "id" and (en_cache or en_config or {}).get(c) == model_id)]
     if ajenas:
         _seccion("Otras claves (el asistente no las toca)")
@@ -434,6 +448,8 @@ def cmd_model_info(manager: ConfigManager, args):
 
     print()
     print("Editar opciones: " + Colors.CYAN + f"ocm model options {provider} {model_id}" + Colors.RESET)
+    print("Detectar:        " + Colors.CYAN + f"ocm model detect {provider} {model_id}" +
+          Colors.RESET + "   (le pregunta al servidor)")
     print("Renombrar:       " + Colors.CYAN + f"ocm model name {provider} {model_id}" + Colors.RESET)
     print("JSON tal cual:   " + Colors.CYAN + f"ocm model show {provider} {model_id}" + Colors.RESET)
 

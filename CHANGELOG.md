@@ -6,8 +6,9 @@ Formato [Keep a Changelog](https://keepachangelog.com/es/1.1.0/), versionado
 ## [2.1.0] - 2026-10-18
 
 Ajustes del asistente de opciones, salidos de usarlo contra providers reales, una
-ficha para consultar la configuración de un modelo sin abrir el JSON, y el tipo de
-servidor (Ollama o vLLM) con autodetección.
+ficha para consultar la configuración de un modelo sin abrir el JSON, el tipo de
+servidor (Ollama o vLLM) con autodetección, y `ocm model detect`, que le pregunta al
+servidor las opciones de cada modelo en vez de hacer que las escribas a mano.
 
 ### Añadido
 
@@ -24,6 +25,20 @@ servidor (Ollama o vLLM) con autodetección.
 - La caché anota de dónde salió cada tipo (`type_source`) y por qué endpoint contestó
   el servidor en el último escaneo (`type_evidence`); `ocm model info` y los listados
   lo enseñan y avisan cuando el tipo no cuadra con la evidencia.
+- `ocm model detect [PROVIDER] [MODELO]`: pregunta al servidor qué sabe de cada modelo y
+  **propone** las opciones (contexto, modalidades de entrada y salida, razonamiento,
+  tool calling). Consulta `GET /props` (llama.cpp), `POST /api/show` (ollama),
+  `GET /api/tags` y `GET /v1/models`, el registro de models.dev que opencode ya tiene
+  descargado (`~/.cache/opencode/models.json`) y, en último término, el nombre del
+  modelo. Cada valor lleva escrita su procedencia, y lo que sólo viene del nombre sale
+  marcado como suposición, nunca como dato cierto.
+- El asistente cuenta de dónde salió cada cosa: la ficha de `ocm model info` lo pone al
+  lado del valor y `ocm model options` lo recuerda antes de preguntar, en amarillo
+  cuando fue una pista del nombre y no una prueba del servidor.
+- Flags de `ocm model detect`: `--apply` (única forma de escribir, y sólo en la caché;
+  rellena huecos), `--force` (cambiar también lo que ya tenías puesto), `--all` (sin
+  menú de selección), `--probar` (mandar una imagen 1x1 y leer si la acepta),
+  `--no-registro` (fiarse sólo del servidor) y `--json`.
 
 - `ocm model info [PROVIDER] [MODELO]`: ficha en claro de un modelo —nombre visible,
   dónde está (caché, bloque singular o bloque plural), URL, API key mascada, último

@@ -23,6 +23,7 @@ opencodeconfig/
 │   ├── api.py                 # ProviderScanner, ScanResult, ProbeResult (probe)
 │   ├── cache_models.py        # Modelo de datos de la caché (v2) + migración
 │   ├── model_fields.py        # Spec declarativa de las opciones de un modelo
+│   ├── deteccion.py           # De donde sale cada opcion: servidor, registro, nombre
 │   ├── cli.py                 # Parser argparse + dispatch
 │   └── commands/
 │       ├── __init__.py
@@ -35,6 +36,7 @@ opencodeconfig/
 │       ├── scan.py            # scan, scan_single_provider (autodeteccion y arreglo del tipo)
 │       ├── update.py          # update provider/global
 │       ├── cache.py           # cache show/clear/type
+│       ├── detect.py          # ocm model detect: preguntar al servidor y proponer
 │       └── debug.py           # debug config, validate_config
 ├── scripts/
 │   ├── ccl                    # Wrapper Linux/macOS
@@ -132,6 +134,43 @@ servidor en el ultimo escaneo). Reglas en `scan_single_provider`:
   `name` solo se adopta cuando en la caché es una copia del id
 - Cambiar opciones guarda la caché con `save_cache(touch=False)`: no mueve la fecha
   del ultimo escaneo
+- `_fuentes_deteccion()` / `_contar_deteccion()`: antes de repasar los campos dice
+  quien puso cada valor (lo que anoto `ocm model detect`) y, justo antes de preguntar
+  uno que vino de una pista del nombre, lo recuerda en amarillo
+
+**`deteccion.py`** - De donde sale cada opcion de un modelo:
+- `Deteccion.ofrecer(clave, valor, fuente, suposicion=False)`: gana la primera fuente
+  que hable (el orden de las llamadas es el orden de confianza). Unica excepcion: las
+  modalidades se **suman** entre fuentes del servidor (`capabilities` por un lado y
+  `/props` por otro conocen partes distintas); una suposicion nunca anade lo que el
+  servidor no confirmo
+- `Explorador` pide `GET /props` y `POST /api/show` **una vez por provider**, no por
+  modelo; el `/api/show` se intenta con `{"name":...}` y con `{"model":...}` porque
+  cada clon de ollama espera uno distinto
+- Orden de las fuentes: endpoints del servidor (`_desde_entrada`, `_desde_props`,
+  `_desde_show`) → registro de opencode (`_indice_registro`, que cachea por mtime
+  `~/.cache/opencode/models.json`) → `_desde_nombre`, que marca lo suyo como
+  `suposicion`. El `name`, el `status` y lo experimental **jamás** salen del registro,
+  y el video nunca se adivina
+- `_servidor_de()` deduce llama.cpp/ollama/vllm/sglang para saber que endpoints tiene
+  sentido preguntar; `probar_vision()` (solo con `--probar`) manda un PNG 1x1 y lee el
+  rechazo, y solo se gasta si nada antes decidio la modalidad
+- `detectar_opciones()` devuelve el `Deteccion`. La procedencia se guarda en la cache
+  bajo `CLAVE_FUENTES` (`opciones_fuente`) y `CLAVE_DETECTADO`
+  (`opciones_detectado_en`); `serialize_model()` las filtra, asi que no aparecen en
+  `opencode.json` y `ocm model info` las excluye de "otras claves"
+
+**`commands/detect.py`** - `ocm model detect`:
+- `_entradas_crudas()` pide `GET /api/tags` **y** `GET /v1/models` y mezcla los objetos
+  crudos por modelo: un servidor puede contestar a los dos con piezas distintas
+- `filas_de_un_modelo()` produce `(campo, ahora, detectado, fuente, estado)`; el estado
+  es `anade|cambia|igual|respeta` y `aplicar_filas()` escribe la cache solo con
+  `--apply`, rellenando huecos salvo con `--force`
+- Es una propuesta: sin `--apply` no toca disco; con el escribe la cache y recuerda
+  `ocm update <provider>`, que es lo que lleva el valor a `opencode.json`
+- `--all` se salta el menu de seleccion, `--json` vuelca para scripts (y calla los
+  avisos), `--no-registro` deja solo lo del servidor, `--probar` activa la prueba
+  comportamental
 
 **`commands/configure.py`** - `ocm configure`, el asistente de provider:
 - `cmd_configure()`: estado actual → campos del provider → estilo de API → escaneo
@@ -178,8 +217,11 @@ servidor en el ultimo escaneo). Reglas en `scan_single_provider`:
 **`commands/`** - Lógica de cada comando:
 - `provider.py`: `new`, `list`, `remove`
 - `model.py`: `model list|info|name|rm`, `rename`. `model info` es de solo lectura
-  (no adopta opciones en la caché ni guarda, a diferencia de `model show`)
+  (no adopta opciones en la caché ni guarda, a diferencia de `model show`) y anota al
+  lado de cada opcion de donde salio
 - `options.py`: `model options|show` (asistente de opciones)
+- `detect.py`: `ocm model detect` (pregunta al servidor y al registro, propone, y solo
+  escribe la caché con `--apply`)
 - `configure.py`: `ocm configure` (asistente de provider + poda)
 - `encoded.py`: bloque plural `providers` (deteccion, traduccion, `config to-singular`)
 - `scan.py`: escaneo de APIs
@@ -236,12 +278,15 @@ ocm model options [P] [M]        # Asistente: contexto, modalidades, capacidades
 ocm model options P M --set limit.context=131072   # Sin preguntar (script)
 ocm model show [P] [M]           # Ver el JSON de las opciones de un modelo
 ocm model info [P] [M] [-a]      # Ficha legible; solo lectura, no escribe
+ocm model detect [P] [M]         # Pregunta al servidor/registro y PROPONE opciones
+                                 #   --apply | --force | --all | --probar | --json
 ocm model rm [P] [M] [-y]        # UNICO comando que borra un modelo (caché + config)
 ocm configure [PROVIDER]         # Asistente: nombre, URL, api key, estilo API, modelos, poda
 ocm rename [PROVIDER]            # Renombrar nombre visible del provider
 
 # Caché → provider_cache.json
 ocm cache update [PROVIDER]       # Escanear APIs y actualizar caché
+ocm cache type [P] [TIPO|auto]   # Ver/fijar si el servidor es Ollama o vLLM (afecta al escaneo)
 ocm cache list                   # Listar providers en caché
 ocm cache rm NAME                # Eliminar provider de caché
 ocm cache clear                  # Borrar toda la caché
