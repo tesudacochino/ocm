@@ -436,6 +436,26 @@ def scenario_salida_supuesta(home: Path, config: Path):
     check("limit.output" not in d.valores, "H13: sin contexto no se inventa salida")
 
 
+def scenario_nombre_con_provider():
+    """H14: el nombre visible por defecto es 'modelo · provider'."""
+    print("\n=== H14: nombre visible 'modelo · provider' ===")
+    from opencode_config_manager.commands.utils import (build_provider_config,
+                                                        merge_provider_config)
+    cache = {"name": "chati", "baseUrl": URL,
+             "models": {"default": {"name": "default"}, "otro": {"name": "Mi nombre"}}}
+    deseado = build_provider_config("chati", cache)
+    check(deseado["models"]["default"]["name"] == "default · chati",
+          "H14: id sin nombre propio -> 'default · chati'")
+    check(deseado["models"]["otro"]["name"] == "Mi nombre", "H14: un nombre elegido se respeta")
+    previo = {"models": {"default": {"name": "default"}, "otro": {"name": "A mano"}}}
+    fusion, cambios = merge_provider_config(previo, deseado)
+    check(fusion["models"]["default"]["name"] == "default · chati",
+          "H14: update mejora un nombre que era copia del id")
+    check(fusion["models"]["otro"]["name"] == "A mano", "H14: y no pisa uno puesto a mano")
+    _, cambios2 = merge_provider_config(fusion, deseado)
+    check(not cambios2, "H14: es idempotente")
+
+
 def main_tests():
     escenarios = [
         ("new rellena y confirma", scenario_new_apply),
@@ -460,6 +480,7 @@ def main_tests():
 
     scenario_merece()
     scenario_parameters()
+    scenario_nombre_con_provider()
 
     fallidos = [etiqueta for ok, etiqueta in CHECKS if not ok]
     print(f"\n=== {len(CHECKS) - len(fallidos)}/{len(CHECKS)} checks OK ===")

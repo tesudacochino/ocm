@@ -208,6 +208,16 @@ def model_display_name(models: dict, model_id: str) -> str:
     return entry.get("name") or model_id
 
 
+def default_model_label(model_id: str, provider_label: str) -> str:
+    """Nombre visible por defecto: 'default · chati'.
+
+    El selector de opencode v2 no muestra el provider junto al modelo, asi que dos
+    modelos con el mismo id (varios 'default') serian indistinguibles. Solo cambia la
+    etiqueta: a la API se le sigue mandando la clave del modelo.
+    """
+    return f"{model_id} · {provider_label}" if provider_label else model_id
+
+
 MAX_BACKUPS = 10
 
 
@@ -274,7 +284,10 @@ def build_provider_config(provider_name: str, cache_info: dict,
         serialized, avisos = serialize_model(entry)
         for aviso in avisos:
             ConfigUI.print_warning(f"{provider_name}/{model_id}: {aviso}")
-        models[model_id] = {"name": entry.get("name") or model_id, **serialized}
+        nombre = entry.get("name")
+        if not nombre or nombre == model_id:
+            nombre = default_model_label(model_id, config["name"])
+        models[model_id] = {**serialized, "name": nombre}
     if models:
         config["models"] = models
 
@@ -341,6 +354,10 @@ def merge_provider_config(existing: dict, desired: dict, force: bool = False) ->
             models[model_id] = copy.deepcopy(wanted)
             changes.append(f"models.{model_id} (alta)")
             continue
+        # Un nombre que es copia del id es que nadie lo eligio: se mejora sin --force
+        if current.get("name") == model_id and wanted.get("name") not in (None, model_id):
+            current["name"] = wanted["name"]
+            changes.append(f"models.{model_id}.name")
         apply(current, wanted, MANAGED_MODEL_FIELDS, f"models.{model_id}.")
 
     return merged, changes

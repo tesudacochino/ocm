@@ -305,8 +305,8 @@ def scenario_api_style(home: Path, config: Path):
     check(provider.get("npm") == "@ai-sdk/openai",
           "B4: 'ocm update' escribe el paquete elegido en opencode.json")
     check(provider.get("name") == "Cerebro Local", "B4: el nombre visible del provider se escribe")
-    check(provider["models"]["mi-modelo"]["name"] == "mi-modelo",
-          "B4: los modelos detectados quedan con su nombre")
+    check(provider["models"]["mi-modelo"]["name"] == "mi-modelo · Cerebro Local",
+          "B4: los modelos detectados quedan con 'modelo · provider'")
     check(entry.get("provider_type") == "vllm", "B4: tipo de provider detectado")
 
 

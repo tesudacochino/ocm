@@ -103,7 +103,8 @@ def scenario_no_destructivo(home: Path):
     check(mole["models"]["qwen3:14b"].get("options") == {"temperature": 0.2},
           "A1: conserva opciones escritas a mano en un modelo")
     check("legacy-only" in mole["models"], "A1: no borra modelos existentes")
-    check(mole["models"]["gemma4:latest"]["name"] == "gemma4:latest", "A1: añade el modelo nuevo")
+    check(mole["models"]["gemma4:latest"]["name"] == f"gemma4:latest · {mole['name']}",
+          "A1: añade el modelo nuevo con nombre 'modelo · provider'")
     check(mole["options"].get("apiKey") == "sk-local", "A3: la apiKey de la cache llega al config")
 
     before = read(config)

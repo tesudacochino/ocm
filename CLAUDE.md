@@ -110,6 +110,12 @@ servidor en el ultimo escaneo). Reglas en `scan_single_provider`:
 - `build_provider_config()` → config "deseada" desde la caché
 - `merge_provider_config(existing, desired, force)` → **no destructivo**: conserva
   claves ajenas y modelos existentes; sin `--force` tampoco sobrescribe las suyas
+- nombre visible por defecto de un modelo: `default_model_label()` → `modelo · provider`
+  (`default · chati`), porque el selector de opencode v2 no enseña el provider y varios
+  `default` serian indistinguibles. Se aplica cuando el nombre es copia del id (nadie lo
+  eligio), tanto al crear (`build_provider_config`) como al mejorar uno existente en
+  `merge_provider_config` sin `--force`; un nombre puesto a mano no se toca. Solo es
+  etiqueta: la clave del modelo, lo que viaja a la API, no cambia
 - `get_provider_type()` con alias (`llama.cpp`, `lmstudio`, ...), `displayify()`
 
 **`model_fields.py`** - Que se puede configurar en un modelo (unica fuente de verdad):
