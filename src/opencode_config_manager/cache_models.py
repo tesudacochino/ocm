@@ -88,8 +88,8 @@ def _clean_entry(model_id: str, data) -> dict:
 
         if isinstance(data.get("modalities"), dict):
             for side in ("input", "output"):
-                if entry["modalities"].get(side):
-                    modalities[side] = entry["modalities"][side]
+                if data["modalities"].get(side):
+                    modalities[side] = data["modalities"][side]
             entry.pop("modalities", None)
 
     if modalities:

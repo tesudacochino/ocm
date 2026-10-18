@@ -456,6 +456,30 @@ def scenario_nombre_con_provider():
     check(not cambios2, "H14: es idempotente")
 
 
+def scenario_regresiones_limpieza(home: Path, config: Path):
+    """H15: bugs corregidos en la limpieza (modalities vacio, etiqueta, update con typo)."""
+    print("\n=== H15: regresiones de la limpieza ===")
+    from opencode_config_manager.cache_models import normalize_models
+
+    modelos = normalize_models({"m": {"modalities": {}, "limit": {"context": 8}}})
+    check("modalities" not in modelos["m"], "H15: 'modalities' vacio no revienta la cache")
+    modelos = normalize_models({"m": {"modalities": {"input": ["text", "image"]}}})
+    check(modelos["m"]["modalities"] == {"input": ["text", "image"]},
+          "H15: 'modalities' con datos se conserva")
+
+    d = deteccion.Deteccion()
+    deteccion._desde_entrada({"context_length": 4096}, d, "GET /v1/models", [])
+    check(d.fuentes.get("limit.context") == "GET /v1/models (context_length)",
+          "H15: la etiqueta dice la clave que dio el contexto")
+
+    preparar(home, config)
+    antes = config.read_text(encoding="utf-8")
+    salida = run_cap(home, config, "update", "no-existe")
+    check("no encontrado" in salida, "H15: update con nombre desconocido da error")
+    check(config.read_text(encoding="utf-8") == antes,
+          "H15: y no escribe otro provider del mismo tipo")
+
+
 def main_tests():
     escenarios = [
         ("new rellena y confirma", scenario_new_apply),
@@ -469,6 +493,7 @@ def main_tests():
         ("reescaneo por viejo", scenario_rescan_desactualizado),
         ("el motor no viaja", scenario_motor_no_viaja),
         ("salida supuesta", scenario_salida_supuesta),
+        ("regresiones de la limpieza", scenario_regresiones_limpieza),
     ]
     for nombre, fn in escenarios:
         home = Path(tempfile.mkdtemp(prefix="ocm-test-h-"))

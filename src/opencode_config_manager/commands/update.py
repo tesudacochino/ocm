@@ -213,20 +213,13 @@ def cmd_update_global(manager: ConfigManager, args):
             ConfigUI.print_error("No hay providers en caché para actualizar.")
             return
 
-    # Resolver por nombre o uid; si no existe, buscar por tipo
+    # Resolver por nombre o uid. Sin coincidencia es un error: no se adivina otro
+    # provider (un typo no debe escribir en opencode.json algo que no se pidio)
     resolved = _resolve_provider(provider, manager)
-    if not resolved:
-        provider_type = get_provider_type(provider, manager)
-        for cache_name, cache_info in manager.cache_data.get("providers", {}).items():
-            if get_provider_type(cache_name, manager) == provider_type:
-                resolved = cache_name
-                ConfigUI.print_info(f"Usando provider encontrado en caché: {resolved} (tipo: {provider_type})")
-                break
-
     if not resolved:
         ConfigUI.print_error(f"Provider '{provider}' no encontrado en caché.")
         print("Ejecuta primero: ocm cache update <PROVIDER>")
-        _print_cache_providers(manager)
+        _print_cache_providers(manager, provider)
         return
 
     cmd_update_provider(manager, args, provider=resolved)

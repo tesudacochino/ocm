@@ -284,14 +284,11 @@ def _desde_entrada(entrada, d, fuente, textos):
     if not isinstance(entrada, dict):
         return
 
-    contexto = None
     for clave in ("max_model_len", "context_length", "n_ctx", "max_context"):
         valor = entrada.get(clave)
         if isinstance(valor, int) and valor > 0:
-            contexto = valor
+            d.ofrecer("limit.context", valor, f"{fuente} ({clave})")
             break
-    if contexto:
-        d.ofrecer("limit.context", contexto, f"{fuente} ({'max_model_len'})")
 
     _desde_capabilities(
         _lista_capability(entrada.get("capabilities") or entrada.get("capability")),

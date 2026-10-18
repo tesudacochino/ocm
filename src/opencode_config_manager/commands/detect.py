@@ -170,6 +170,12 @@ def consultar_modelos(base_url: str, api_key: str, modelos: dict, seleccion: lis
             probar=probar,
         )
         filas = filas_de_un_modelo(entrada_cache, det)
+        # sin --force un valor ya puesto no se cambia: asi lo ven tambien los que no pintan
+        ya_puestas = set()
+        for fila in filas:
+            if fila["accion"] == "cambia" and not forzar:
+                fila["accion"] = "respeta"
+                ya_puestas.add(fila["clave"])
         trabajos.append({"model_id": model_id, "entrada": entrada_cache,
                          "det": det, "filas": filas})
         if not pintar:
@@ -186,8 +192,7 @@ def consultar_modelos(base_url: str, api_key: str, modelos: dict, seleccion: lis
             _pintar_cabecera()
             for fila in filas:
                 nota = ""
-                if fila["accion"] == "cambia" and not forzar:
-                    fila["accion"] = "respeta"
+                if fila["clave"] in ya_puestas:
                     nota = Colors.YELLOW + "   (ya lo tenias puesto: no se toca)" + Colors.RESET
                 if fila["suposicion"]:
                     nota += Colors.YELLOW + "   (pista del nombre, no una prueba)" + Colors.RESET
