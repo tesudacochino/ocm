@@ -259,7 +259,9 @@ ocm model options mole qwen3:14b --set limit.context=131072 \
 ```
 
 El asistente va preguntando campo a campo y muestra el valor actual entre
-corchetes:
+corchetes. Si el campo no está guardado, entre corchetes va lo que opencode
+asume, etiquetado como `por defecto`; dar Intro ahí deja la clave **sin
+escribir**, no se rellena la caché con valores que opencode aplica de todas formas.
 
 ```
 Opciones de mole/qwen3:14b
@@ -267,14 +269,15 @@ Opciones de mole/qwen3:14b
   Nombre visible en /models [Qwen 3 14B]:
   Tokens de contexto (entrada) [131072] (ej: 4096 o 128k):
   Tokens maximos de salida [8192] (ej: 4096 o 128k):
-  Entradas que acepta [text] (1,3 o text,image): 1,3
+  Entradas que acepta [text] (1=text, 2=audio, 3=image, 4=video, 5=pdf o text,image): 1,3
+  Salidas que produce [por defecto: text] (1=text, 2=audio, ...):
   Es un modelo de razonamiento (thinking) [si] (y/n): -
-  Soporta tool calling [si] (y/n):
+  Soporta tool calling [por defecto: no] (y/n): y
 ```
 
 | Tecla | Efecto |
 |-------|--------|
-| Intro | mantiene lo que hay |
+| Intro | mantiene lo que hay (si estaba vacío, lo que opencode asume) |
 | un valor nuevo | lo reemplaza (se valida: `128k` → 131072, `vision` → `image`, `1,3` → `text,image`) |
 | `-` | quita la opción |
 | `?` | explica para qué sirve el campo y qué valores son habituales |

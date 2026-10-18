@@ -3,6 +3,31 @@
 Formato [Keep a Changelog](https://keepachangelog.com/es/1.1.0/), versionado
 [SemVer](https://semver.org/lang/es/).
 
+## [2.0.1] - 2026-10-18
+
+Ajustes del asistente de opciones, salidos de usarlo contra providers reales.
+
+### Cambiado
+
+- `ocm model options` muestra entre corchetes lo que opencode asume cuando un campo
+  no está guardado (`[por defecto: text]`, `[por defecto: no]`) y `sin definir` en
+  los tamaños de contexto, para que dar Intro sea una decisión informada. Intro
+  sigue sin escribir nada: ocm no rellena claves que opencode aplica de todas formas.
+- El prompt de las modalidades ya no dice `(1,3 o text,image)`, que no se entendía:
+  ahora lista las opciones (`1=text, 2=audio, 3=image, 4=video, 5=pdf o text,image`)
+  y con `?` explica cómo escribir varias de golpe.
+- Cuando un modelo no tiene ninguna opción guardada, el asistente lo avisa arriba del
+  todo, para que no se confunda "no hay nada" con "el valor es ese".
+
+### Corregido
+
+- El resumen en una línea de `ocm model options` y de los listados ponía
+  `out~=text` para las modalidades de salida; ahora es `out=text`, y el límite de
+  tokens de salida se distingue como `out_max=` (`ctx=131072, out_max=8192,
+  in=text,image, out=text, reasoning, tools`).
+- Unas modalidades escritas a mano como texto (`"output": "text"`) se deshacían
+  letra a letra al resumir el modelo.
+
 ## [2.0.0] - 2026-10-18
 
 Serie 2.x = configuración de **opencode v2** (esta versión está comprobada contra

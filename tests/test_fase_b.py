@@ -9,6 +9,7 @@ No necesita pytest ni red: trabaja contra una caché y un opencode.json temporal
 
 import io
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -18,7 +19,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from opencode_config_manager.cli import main  # noqa: E402
 from opencode_config_manager.model_fields import (  # noqa: E402
+    MODALITIES,
     coerce,
+    describe_model,
+    format_value,
     parse_int,
     serialize_model,
     set_value,
@@ -31,6 +35,21 @@ CHECKS = []
 def check(cond, label):
     print(("  OK    " if cond else "  FALLO ") + label)
     CHECKS.append((bool(cond), label))
+
+
+class captura:
+    """Guarda lo que ocm imprime mientras corre el bloque, sin codigos ANSI."""
+
+    def __enter__(self):
+        self.buffer = io.StringIO()
+        self._anterior = sys.stdout
+        sys.stdout = self.buffer
+        return self
+
+    def __exit__(self, *exc):
+        sys.stdout = self._anterior
+        self.texto = re.sub(r"\x1b\[[0-9;]*m", "", self.buffer.getvalue())
+        return False
 
 
 def run(home, config, *argv):
@@ -352,13 +371,128 @@ def scenario_adoption(home: Path, config: Path):
     check("modalities" in config_model, "B5: y no arrastra nada al hacerlo")
 
 
+# ------------------------------------------------------------------- prompts --
+def scenario_prompts(home: Path, config: Path):
+    """Los prompts enseñan lo que opencode asume cuando no hay nada guardado."""
+    print("\n=== prompts con valores efectivos ===")
+
+    from opencode_config_manager.commands.options import _field_hint
+
+    # El caso del provider recien escaneado: ni la cache ni el config traen opciones
+    write_json(config, {
+        "$schema": "https://opencode.ai/config.json",
+        "provider": {
+            "chati": {
+                "npm": "@ai-sdk/openai-compatible",
+                "name": "Chati",
+                "options": {"baseURL": "http://chati:11434/v1"},
+                "models": {"default": {"name": "default"}},
+            }
+        },
+    })
+    write_json(home / "provider_cache.json", {
+        "cache_version": 2,
+        "cache_timestamp": 1700000000,
+        "providers": {
+            "chati": {
+                "uid": "dddd2222",
+                "name": "Chati",
+                "provider_type": "vllm",
+                "baseUrl": "http://chati:11434",
+                "last_scan": 1700000000,
+                "models": {"default": {"name": "default"}},
+            }
+        },
+    })
+
+    mapa = _field_hint(spec_for("modalities.input"))
+    for indice, valor in enumerate(MODALITIES, start=1):
+        check(f"{indice}={valor}" in mapa, f"B6: el prompt dice que {indice} es '{valor}'")
+        check(coerce(spec_for("modalities.input"), str(indice)) == [valor],
+              f"B6: responder {indice} guarda '{valor}'")
+
+    check(format_value(spec_for("reasoning"), None) == "por defecto: no",
+          "B6: un bool sin valor muestra lo que opencode asume")
+    check(format_value(spec_for("reasoning"), False) == "no",
+          "B6: un 'no' guardado se muestra sin el 'por defecto'")
+    check(format_value(spec_for("tool_call"), True) == "si",
+          "B6: un bool guardado a true se muestra 'si'")
+    check(format_value(spec_for("modalities.input"), None) == "por defecto: text",
+          "B6: las modalidades vacias muestran 'text'")
+    check(format_value(spec_for("modalities.input"), ["text", "image"]) == "text,image",
+          "B6: las modalidades guardadas se muestran tal cual")
+    check(format_value(spec_for("limit.context"), None) == "sin definir",
+          "B6: un entero sin valor dice 'sin definir', no inventa uno")
+    check(format_value(spec_for("status"), None) == "por defecto: active",
+          "B6: el estado vacio muestra 'active'")
+
+    resumen = describe_model({"limit": {"context": 131072, "output": 8192},
+                               "modalities": {"input": ["text", "image"], "output": ["text"]},
+                               "tool_call": True})
+    check("out~=" not in resumen, "B6: el resumen de una linea ya no usa 'out~='")
+    check("ctx=131072" in resumen and "out_max=8192" in resumen
+          and "in=text,image" in resumen and "out=text" in resumen,
+          f"B6: ctx / out_max / in / out sin solaparse -> {resumen.strip()}")
+    check(describe_model({"modalities": {"output": "text"}}) == "  (out=text)",
+          "B6: unas modalidades escritas a mano como texto se resumen bien")
+
+    # Intro en todo: no cambia nada y no escribe nada
+    config_antes = config.read_text(encoding="utf-8")
+    cache_antes = read(home / "provider_cache.json")
+    sys.stdin = io.StringIO("\n" * 10)
+    with captura() as cap:
+        rc = run(home, config, "model", "options", "chati", "default")
+    check(rc == 0, "B6: el asistente termina bien dando Intro en todo")
+
+    texto = cap.texto
+    for esperado in (
+        "Tokens de contexto (entrada) [sin definir]",
+        "Entradas que acepta [por defecto: text]",
+        "Salidas que produce [por defecto: text]",
+        "Es un modelo de razonamiento (thinking) [por defecto: no]",
+        "Soporta tool calling [por defecto: no]",
+        "1=text, 2=audio, 3=image, 4=video, 5=pdf",
+        "Sin opciones guardadas",
+        "sin cambios",
+    ):
+        check(esperado in texto, f"B6: el asistente muestra '{esperado}'")
+
+    check(config.read_text(encoding="utf-8") == config_antes,
+          "B6: Intro en todo no toca opencode.json")
+    check(read(home / "provider_cache.json") == cache_antes,
+          "B6: Intro en todo no ensucia la cache")
+
+    # Responder: name | context | output | in | out | reasoning | tool_call
+    # (limit.output aparece cuando el contexto deja de estar vacio)
+    sys.stdin = io.StringIO("\n".join(["", "8192", "", "1,3", "1", "y", "y"]) + "\n")
+    with captura() as cap2:
+        run(home, config, "model", "options", "chati", "default")
+
+    guardado = read(home / "provider_cache.json")["providers"]["chati"]["models"]["default"]
+    check(guardado["limit"]["context"] == 8192, "B6: el contexto respondido queda en la cache")
+    check(guardado["modalities"] == {"input": ["text", "image"], "output": ["text"]},
+          "B6: las modalidades respondidas quedan en la cache")
+    check(guardado.get("reasoning") is True and guardado.get("tool_call") is True,
+          "B6: los bools respondidos quedan en la cache")
+    check("out~=" not in cap2.texto and "out=text" in cap2.texto,
+          "B6: la linea de resumen que ve el usuario dice 'out=text'")
+    check("deberia incluir" in cap2.texto,
+          "B6: avisa de que limit pedia context y output juntos")
+    config_model = read(config)["provider"]["chati"]["models"]["default"]
+    check(config_model["limit"] == {"context": 8192}
+          and config_model["modalities"]["input"] == ["text", "image"]
+          and config_model["tool_call"] is True,
+          "B6: lo respondido llega a opencode.json")
+
+
 def main_tests():
     scenario_parser()
 
     for name, fn in [("no interactivo", scenario_set),
                      ("asistente", scenario_wizard),
                      ("adopcion", scenario_adoption),
-                     ("estilo de API", scenario_api_style)]:
+                     ("estilo de API", scenario_api_style),
+                     ("prompts", scenario_prompts)]:
         print(f"\n=== escenario: {name} ===")
         home = Path(tempfile.mkdtemp(prefix="ocm-test-b-"))
         try:

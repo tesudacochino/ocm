@@ -36,6 +36,25 @@ OUTPUT_PRESETS = (1024, 2048, 4096, 8192, 16384, 32768, 65536)
 
 MODEL_STATUSES = ("active", "beta", "alpha", "deprecated")
 
+# Lo que opencode asume cuando una clave no esta escrita en el modelo. Solo lo usa
+# el asistente para mostrarlo entre corchetes y que Intro sea una decision
+# informada: por ponerlo en la pantalla no se escribe en opencode.json.
+EFFECTIVE_DEFAULTS = {
+    "modalities.input": ("text",),
+    "modalities.output": ("text",),
+    "reasoning": False,
+    "tool_call": False,
+    "temperature": False,
+    "attachment": False,
+    "experimental": False,
+    "status": "active",
+}
+
+# Los enteros no tienen valor efectivo que enseñar: si no ponen nada, opencode usa
+# su propia ventana de contexto y no hay que inventar un numero.
+SIN_DEFINIR = "sin definir"
+POR_DEFECTO = "por defecto: "
+
 TRUE_WORDS = {"y", "yes", "si", "sí", "yep", "true", "t", "1", "on", "verdadero"}
 FALSE_WORDS = {"n", "no", "false", "f", "0", "off", "falso"}
 
@@ -325,6 +344,11 @@ def serialize_model(entry: dict) -> tuple:
     return out, warnings
 
 
+def _lista(valor) -> str:
+    """Las modalidades pueden venir como lista o como string escrito a mano."""
+    return valor if isinstance(valor, str) else ",".join(str(item) for item in valor)
+
+
 def describe_model(entry: dict) -> str:
     """Resumen en una linea de las opciones de un modelo, para listados."""
     bits = []
@@ -332,12 +356,12 @@ def describe_model(entry: dict) -> str:
     if limit.get("context"):
         bits.append(f"ctx={limit['context']}")
     if limit.get("output"):
-        bits.append(f"out={limit['output']}")
+        bits.append(f"out_max={limit['output']}")
     modalities = entry.get("modalities") or {}
     if modalities.get("input"):
-        bits.append(f"in={','.join(modalities['input'])}")
+        bits.append(f"in={_lista(modalities['input'])}")
     if modalities.get("output"):
-        bits.append(f"out~={','.join(modalities['output'])}")
+        bits.append(f"out={_lista(modalities['output'])}")
     if entry.get("reasoning"):
         bits.append("reasoning")
     if entry.get("tool_call"):
@@ -358,12 +382,23 @@ def describe_model(entry: dict) -> str:
 
 
 def format_value(spec: FieldSpec, value) -> str:
-    """Como se muestra un valor actual en el asistente."""
+    """Como se muestra el valor actual de un campo en el asistente.
+
+    Cuando el campo no tiene valor se enseña lo que opencode asume, marcado como
+    'por defecto', para que Intro sea una decision informada y no un salto de fe.
+    En los enteros no hay default que enseñar: 'sin definir'.
+    """
     if value is None or value == "" or value == [] or value == {}:
+        if spec.kind == "int":
+            return SIN_DEFINIR
+        if spec.key in EFFECTIVE_DEFAULTS:
+            return POR_DEFECTO + format_value(spec, EFFECTIVE_DEFAULTS[spec.key])
         return ""
     if spec.kind == "bool":
         return "si" if value else "no"
     if spec.kind == "multi":
+        if isinstance(value, str):
+            return value
         return ",".join(value)
     if isinstance(value, bool):
         return "si" if value else "no"

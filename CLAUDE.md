@@ -86,7 +86,12 @@ opencodeconfig/
 - `get_value()/set_value()` trabajan por ruta (`limit.context`) y limpian el
   contenedor al vaciarse
 - `serialize_model()` → solo emite claves con contenido + avisos (p.ej. `limit`
-  sin `output`); `describe_model()` → resumen para listados
+  sin `output`); `describe_model()` → resumen para listados, con `ctx=` y `out_max=`
+  para los enteros de `limit` e `in=`/`out=` para las modalidades
+- `EFFECTIVE_DEFAULTS` y `format_value()`: lo que se muestra entre corchetes cuando
+  la clave no esta escrita, que es lo que opencode asume. Es solo pantalla: Intro
+  ahi deja la clave sin escribir. En los enteros no hay default que enseñar, salen
+  como `sin definir`
 
 **`commands/options.py`** - El asistente campo a campo:
 - `ask_field()` implementa la interaccion: Intro = KEEP, `-` = quitar,

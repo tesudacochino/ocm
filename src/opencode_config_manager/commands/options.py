@@ -4,7 +4,8 @@ Asistente para configurar las opciones de un modelo.
 `ocm model options [PROVIDER] [MODELO]` recorre los campos de `model_fields.FIELDS`
 uno a uno mostrando el valor actual:
 
-    Tokens de contexto (entrada) [131072] (ej: 4096, 128k):
+    Tokens de contexto (entrada) [131072] (ej: 4096 o 128k):
+    Salidas que produce [por defecto: text] (1=text, 2=audio, 3=image, ...):
 
   * Intro            mantiene el valor que hay
   * un valor nuevo   lo reemplaza (se valida y se normaliza)
@@ -54,7 +55,10 @@ def _field_hint(spec) -> str:
     if spec.kind == "int":
         return "ej: 4096 o 128k"
     if spec.kind == "multi":
-        return "1,3 o text,image"
+        # El numero es la posicion en MODALITIES, la misma que usa parse_modalities
+        mapa = ", ".join(f"{indice}={valor}"
+                         for indice, valor in enumerate(spec.presets, start=1))
+        return mapa + " o text,image"
     if spec.kind == "choice":
         return "/".join(spec.presets)
     return ""
@@ -69,6 +73,7 @@ def _print_field_help(spec):
     if spec.kind == "multi":
         print("        opciones: " + ", ".join(
             f"{index}={value}" for index, value in enumerate(spec.presets, start=1)))
+        print("        varias de golpe: '1,3' o 'text,image'")
     elif spec.kind == "int":
         print("        habituales: " + ", ".join(str(value) for value in spec.presets))
     else:
@@ -122,6 +127,15 @@ def configure_model_entry(entry: dict, advanced: bool = False, only=None,
     if header:
         print(f"\n{Colors.BOLD}{header}{Colors.RESET}")
     print(f"{Colors.YELLOW}  Intro mantiene, '-' quita, '?' ayuda, 's' sale{Colors.RESET}")
+
+    # El nombre viene siempre rellenado (con el id), asi que no cuenta para saber si
+    # el modelo ya tiene opciones guardadas.
+    opciones = [spec for spec in specs if spec.key != "name"]
+    if not any(get_value(entry, spec.key) not in (None, "", [], {}) for spec in opciones):
+        # Un modelo recien escaneado no trae nada guardado: los corchetes ensenan lo
+        # que opencode asume, no algo que ocm vaya a escribir si dan Intro.
+        print(f"{Colors.WHITE}  Sin opciones guardadas: lo de entre corchetes es lo que"
+              f" opencode asume; Intro lo deja sin escribir{Colors.RESET}")
 
     changes = {}
     for spec in specs:
