@@ -170,6 +170,9 @@ servidor en el ultimo escaneo). Reglas en `scan_single_provider`:
   `None` (no se inventa). `motor_de()` hace mayoria sobre los modelos y es lo que se
   guarda en la cache (`servidor`, `servidor_evidencia`, `servidor_desde` y
   `servidor_anterior` cuando ha cambiado). Nada de eso llega a `opencode.json`
+- Ningun servidor dice la salida maxima: si solo hay `limit.context`, `detectar_opciones()`
+  propone `limit.output = min(contexto//4, SALIDA_MAXIMA_SUPUESTA)` como **suposicion**,
+  para que `limit` salga completo (opencode exige los dos juntos)
 - `probar_vision()` (solo con `--probar`) manda un PNG 1x1 y lee el
   rechazo, y solo se gasta si nada antes decidio la modalidad
 - `detectar_opciones()` devuelve el `Deteccion`. La procedencia se guarda en la cache

@@ -412,6 +412,30 @@ def scenario_parameters():
               f"H12: con 'parameters' raro ({type(basura).__name__}) no se inventa nada")
 
 
+def _detectar(entrada):
+    servidor = ServidorFalso()
+    servidor.instalar()
+    try:
+        return deteccion.detectar_opciones(URL, None, "m", entrada=entrada, usar_registro=False)
+    finally:
+        servidor.restaurar()
+
+
+def scenario_salida_supuesta(home: Path, config: Path):
+    """H13: con solo contexto, la salida se propone como suposicion y limit sale completo."""
+    print("\n=== H13: limit.output supuesto cuando solo hay contexto ===")
+    from opencode_config_manager import model_fields
+    for ctx, esperado in ((524288, 32768), (65536, 16384)):
+        d = _detectar({"id": "m", "max_model_len": ctx})
+        check(d.valores.get("limit.output") == esperado, f"H13: ctx={ctx} -> output {esperado}")
+        check(d.es_suposicion("limit.output"), "H13: marcado como suposicion")
+        _, avisos = model_fields.serialize_model(
+            {"limit": {"context": ctx, "output": d.valores["limit.output"]}})
+        check(not avisos, "H13: limit completo no avisa")
+    d = _detectar({"id": "m"})
+    check("limit.output" not in d.valores, "H13: sin contexto no se inventa salida")
+
+
 def main_tests():
     escenarios = [
         ("new rellena y confirma", scenario_new_apply),
@@ -424,6 +448,7 @@ def main_tests():
         ("configure", scenario_configure),
         ("reescaneo por viejo", scenario_rescan_desactualizado),
         ("el motor no viaja", scenario_motor_no_viaja),
+        ("salida supuesta", scenario_salida_supuesta),
     ]
     for nombre, fn in escenarios:
         home = Path(tempfile.mkdtemp(prefix="ocm-test-h-"))

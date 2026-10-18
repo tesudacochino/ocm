@@ -48,6 +48,9 @@ CLAVE_MOTOR_EVIDENCIA = "servidor_evidencia"
 CLAVE_MOTOR_DESDE = "servidor_desde"
 CLAVE_MOTOR_ANTERIOR = "servidor_anterior"
 
+# Ningun servidor dice la salida maxima; si solo hay contexto se propone esta como tope
+SALIDA_MAXIMA_SUPUESTA = 32768
+
 # Lo que se trae del registro, y solo eso: el nombre visible, el estado y lo
 # experimental son decisiones del usuario, no datos del servidor
 DE_REGISTRO = (
@@ -577,6 +580,12 @@ def detectar_opciones(base_url, api_key, model_id, entrada=None, nombre=None,
 
     _desde_nombre([model_id, nombre, _nombre_del_repo(str((entrada or {}).get("root") or ""))]
                   + textos, d)
+
+    # opencode exige context y output juntos: con solo el contexto, se supone la salida
+    contexto = d.valores.get("limit.context")
+    if isinstance(contexto, int) and contexto > 0 and "limit.output" not in d.valores:
+        d.ofrecer("limit.output", min(contexto // 4, SALIDA_MAXIMA_SUPUESTA),
+                  "suposicion: salida prudente a partir del contexto", suposicion=True)
 
     if probar and "modalities.input" not in d.valores:
         acepta, mensaje = probar_vision(base_url, api_key, model_id)
