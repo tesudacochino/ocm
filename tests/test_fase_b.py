@@ -485,6 +485,158 @@ def scenario_prompts(home: Path, config: Path):
           "B6: lo respondido llega a opencode.json")
 
 
+# -------------------------------------------------------------------- ficha --
+def scenario_info(home, config):
+    """'ocm model info': ficha en claro, de solo lectura."""
+    print("\n=== ocm model info ===")
+    cache_path = home / "provider_cache.json"
+
+    write_json(config, {
+        "$schema": "https://opencode.ai/config.json",
+        "model": "tok/bueno",
+        "provider": {
+            "tok": {
+                "npm": "@ai-sdk/openai-compatible",
+                "name": "Tok",
+                "options": {"baseURL": "http://127.0.0.1:3000/v1", "apiKey": "sk-secreto-9999"},
+                "models": {
+                    "bueno": {"name": "Bueno", "limit": {"context": 131072, "output": 8192},
+                              "modalities": {"input": ["text", "image"], "output": ["text"]},
+                              "reasoning": True, "tool_call": True,
+                              "options": {"temperature": 0.2}},
+                    "raro": {"name": "raro", "limit": {"context": 4096, "output": 1024},
+                             "tool_call": False},
+                },
+            }
+        },
+        "providers": {
+            "legado": {
+                "name": "Legado",
+                "package": "@ai-sdk/openai-compatible",
+                "models": {
+                    "viejo": {"name": "Viejo", "limit": {"context": 8192, "output": 512},
+                              "capabilities": {"tools": True, "input": ["text"],
+                                               "output": ["text"]}},
+                },
+            }
+        },
+    })
+    write_json(cache_path, {
+        "cache_version": 2,
+        "cache_timestamp": 1700000000,
+        "providers": {
+            "tok": {
+                "uid": "beef1234",
+                "name": "Tok",
+                "provider_type": "vllm",
+                "baseUrl": "http://127.0.0.1:3000",
+                "apiKey": "sk-secreto-9999",
+                "last_scan": 1760000000,
+                "reachable": True,
+                "models": {
+                    "bueno": {"name": "Bueno", "limit": {"context": 131072, "output": 8192},
+                              "modalities": {"input": ["text", "image"], "output": ["text"]},
+                              "reasoning": True, "tool_call": True,
+                              "options": {"temperature": 0.2}},
+                    "raro": {"name": "Raro", "limit": {"context": 1048576}, "tool_call": True,
+                             "thinkingLevelMap": {"low": 1, "high": 9}},
+                },
+            },
+        },
+    })
+
+    antes = (config.read_bytes(), cache_path.read_bytes())
+
+    with captura() as cap:
+        run(home, config, "model", "info", "tok", "bueno")
+    check(cap.texto.count("bueno") >= 1 and "=== tok/bueno ===" in cap.texto,
+          "B7: la ficha se titula con provider/modelo")
+    check("Tokens de contexto (entrada)" in cap.texto
+          and "131072 tokens (128k)" in cap.texto,
+          "B7: el contexto se ve con el numero y su forma legible")
+    check("Tokens maximos de salida" in cap.texto and "8192 tokens (8k)" in cap.texto,
+          "B7: la salida maxima sale con su forma legible")
+    check("text, image" in cap.texto, "B7: las entradas se ven como lista")
+    check("Nombre visible" in cap.texto and "Bueno" in cap.texto,
+          "B7: sale el nombre visible del modelo")
+    check("Modelo por defecto" in cap.texto,
+          "B7: marca el modelo por defecto del config")
+    check("URL (cache)" in cap.texto and "URL (opencode)" in cap.texto,
+          "B7: se distinguen las dos URLs")
+    check("****9999" in cap.texto and "sk-secreto-9999" not in cap.texto,
+          "B7: la API key se ensena mascada, nunca entera")
+    check("paquete del sdk" in cap.texto.lower() and "@ai-sdk/openai-compatible" in cap.texto,
+          "B7: sale el paquete del SDK")
+    check("Otras claves" in cap.texto and '"temperature": 0.2' in cap.texto,
+          "B7: las claves que ocm no gestiona se muestran aparte")
+    check("coinciden" in cap.texto, "B7: si cache y config coinciden, lo dice")
+    check("Editar opciones: ocm model options tok bueno" in cap.texto,
+          "B7: la ficha dice como editar")
+    check(cap.texto.count("(lo asume opencode)") == 0,
+          "B7: un modelo completo no necesita avisos de por defecto")
+
+    with captura() as cap:
+        run(home, config, "model", "info", "tok", "raro")
+    check("no coinciden en: limit, name, tool_call" in cap.texto,
+          "B7: detecta en que claves la cache y el config difieren")
+    check("cache={\"context\": 1048576}" in cap.texto
+          and "config={\"context\": 4096, \"output\": 1024}" in cap.texto,
+          "B7: ensena los dos valores de 'limit'")
+    check("--force" in cap.texto,
+          "B7: explica como hacer que gane la cache")
+    check("(lo asume opencode)" in cap.texto,
+          "B7: marca lo que opencode asume cuando no esta escrito")
+    check("thinkingLevelMap" in cap.texto,
+          "B7: una clave desconocida de la cache sale en 'otras claves'")
+    check("1048576 tokens (1M)" in cap.texto,
+          "B7: manda la cache, no el config (1M frente a 4096)")
+    check("deberia incluir" in cap.texto,
+          "B7: repite el aviso de limit incompleto")
+
+    with captura() as cap:
+        run(home, config, "model", "info", "tok", "raro", "--advanced")
+    for etiqueta in ("Acepta parametro temperature", "Acepta adjuntos",
+                     "Marcar como experimental", "Estado del modelo"):
+        check(etiqueta in cap.texto, f"B7: --advanced anade '{etiqueta}'")
+
+    with captura() as cap:
+        run(home, config, "model", "info", "legado", "viejo")
+    check("solo en el bloque plural" in cap.texto,
+          "B7: avisa si el modelo vive solo en 'providers'")
+    check("ocm config to-singular legado" in cap.texto,
+          "B7: ofrece la migracion al bloque singular")
+    check("8192 tokens (8k)" in cap.texto and "512 tokens" in cap.texto,
+          "B7: muestra lo que dice el bloque plural ya traducido")
+    check("Legado" in cap.texto and "@ai-sdk/openai-compatible" in cap.texto,
+          "B7: nombre y paquete salen aunque no haya entrada en la cache")
+
+    with captura() as cap:
+        run(home, config, "model", "info", "tok", "no-existe")
+    check("no existe" in cap.texto and "bueno" in cap.texto and "raro" in cap.texto,
+          "B7: un modelo desconocido lista los que si existen")
+
+    with captura() as cap:
+        run(home, config, "model", "info", "tok", "bueno", "--json")
+    volcado = json.loads(cap.texto)
+    check(volcado["limit"] == {"context": 131072, "output": 8192}
+          and volcado["tool_call"] is True,
+          "B7: '--json' vuelca el efectivo (la cache manda en lo propio)")
+    check(volcado["options"] == {"temperature": 0.2},
+          "B7: '--json' conserva las claves ajenas del config")
+
+    sys.stdin = io.StringIO("2\n")
+    with captura() as cap:
+        run(home, config, "model", "info", "tok")
+    check("Selecciona modelo:" in cap.texto and "1) bueno" in cap.texto
+          and "2) raro" in cap.texto,
+          "B7: si no se dice el modelo, lo pregunta con menu")
+    check("no coinciden en: limit, name, tool_call" in cap.texto,
+          "B7: la opcion del menu abre la ficha elegida")
+
+    check((config.read_bytes(), cache_path.read_bytes()) == antes,
+          "B7: consultar la ficha no escribe en opencode.json ni en la cache")
+
+
 def main_tests():
     scenario_parser()
 
@@ -492,7 +644,8 @@ def main_tests():
                      ("asistente", scenario_wizard),
                      ("adopcion", scenario_adoption),
                      ("estilo de API", scenario_api_style),
-                     ("prompts", scenario_prompts)]:
+                     ("prompts", scenario_prompts),
+                     ("ficha", scenario_info)]:
         print(f"\n=== escenario: {name} ===")
         home = Path(tempfile.mkdtemp(prefix="ocm-test-b-"))
         try:

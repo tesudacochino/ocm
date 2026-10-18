@@ -232,6 +232,26 @@ def provider_from_encoded(provider: str, entry: dict) -> tuple:
             notes.extend(model_notes)
             models[model_id] = converted or {"name": model_id}
         out["models"] = models
+    elif isinstance(raw_models, (list, tuple)) and raw_models:
+        # El esquema oficial indexa por id; si alguien lo escribio en lista se
+        # resuelve el id con 'modelID'/'id' y cada entrada pasa por el conversor,
+        # para no perder 'capabilities' ni 'settings' por el camino.
+        models = {}
+        for item in raw_models:
+            if isinstance(item, str):
+                models[item] = {"name": item}
+                continue
+            if not isinstance(item, dict):
+                continue
+            model_id = str(item.get("modelID") or item.get("id") or "")
+            if not model_id:
+                notes.append("un modelo de la lista no tiene 'modelID' ni 'id'; se omite")
+                continue
+            converted, model_notes = model_from_encoded(model_id, item)
+            notes.extend(model_notes)
+            models[model_id] = converted or {"name": model_id}
+        out["models"] = models
+        notes.append("'models' estaba en lista; se indexo por 'modelID'")
     elif raw_models not in (None, {}, []):
         notes.append("'models' no es un objeto keyed por id; se intenta convertir")
         converted_models = normalize_models(raw_models)

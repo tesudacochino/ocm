@@ -23,6 +23,7 @@ from .commands.scan import cmd_scan
 from .commands.update import cmd_update_provider, cmd_update_global
 from .commands.cache import cmd_cache_list, cmd_cache_clear, cmd_cache_remove
 from .commands.model import (
+    cmd_model_info,
     cmd_model_list,
     cmd_model_remove,
     cmd_model_rename,
@@ -54,7 +55,8 @@ Ejemplos:
   ocm model name [PROVIDER] [MODELO]  # Renombrar un modelo
   ocm model options [PROVIDER] [MODELO]  # Contexto, modalidades, capacidades
   ocm model options P M --set limit.context=131072 --set modalities.input=text,image
-  ocm model show [PROVIDER] [MODELO]    # Ver sus opciones
+  ocm model info [PROVIDER] [MODELO]      # Ficha en claro de su configuracion
+  ocm model show [PROVIDER] [MODELO]      # Su JSON tal cual
   ocm model rm [PROVIDER] [MODELO]      # Quitar un modelo que ya no esta en el servidor
   ocm configure [PROVIDER]       # Reconfigurar un provider (nombre, URL, key, modelos)
   ocm rename [PROVIDER]          # Renombrar el nombre visible de un provider
@@ -123,10 +125,19 @@ Flujo típico:
                                help="Fijar una opcion sin preguntar (repetible), "
                                     "ej: --set limit.context=131072 --set modalities.input=text,image")
 
-    model_show = model_sub.add_parser("show", aliases=["info"],
-                                      help="Ver en detalle las opciones de un modelo")
+    model_show = model_sub.add_parser("show",
+                                      help="Ver el JSON de las opciones de un modelo")
     model_show.add_argument("provider", nargs="?", help="Provider (se pregunta si se omite)")
     model_show.add_argument("model", nargs="?", help="Modelo (se pregunta si se omite)")
+
+    model_info = model_sub.add_parser("info",
+                                      help="Ver la configuracion de un modelo en claro")
+    model_info.add_argument("provider", nargs="?", help="Provider (se pregunta si se omite)")
+    model_info.add_argument("model", nargs="?", help="Modelo (se pregunta si se omite)")
+    model_info.add_argument("--advanced", "-a", action="store_true",
+                            help="Incluir las opciones avanzadas, tambien sin valor")
+    model_info.add_argument("--json", action="store_true",
+                            help="Volcar solo el JSON efectivo del modelo")
 
     model_rm = model_sub.add_parser("rm", aliases=["remove", "del"],
                                     help="Quitar un modelo de la cache y de opencode.json")
@@ -234,8 +245,10 @@ def main(args: list = None):
             cmd_model_rename(manager, parsed_args)
         elif sub in ("options", "opts"):
             cmd_model_options(manager, parsed_args)
-        elif sub in ("show", "info"):
+        elif sub == "show":
             cmd_model_show(manager, parsed_args)
+        elif sub == "info":
+            cmd_model_info(manager, parsed_args)
         elif sub in ("rm", "remove", "del"):
             cmd_model_remove(manager, parsed_args)
         elif sub in ("list", "ls"):

@@ -44,6 +44,7 @@ ocm list                           # Ver providers configurados
 ocm model list                     # Ver modelos y sus nombres visibles
 ocm model name mole qwen3:14b      # Cambiar el nombre que muestra opencode
 ocm model options mole qwen3:14b   # Contexto, visión, herramientas, thinking
+ocm model info mole qwen3:14b      # Ver esa configuración en claro, sin escribir nada
 ocm configure mole                 # Repasar el provider entero (URL, key, nombres, modelos)
 ocm model rm mole modelo-viejo     # Quitar un modelo que ya no esta en el servidor
 ocm rename mole                    # Cambiar el nombre visible del provider
@@ -62,7 +63,8 @@ ocm rename mole                    # Cambiar el nombre visible del provider
 | `ocm model list [nombre]` | Listar modelos de un provider con su nombre visible |
 | `ocm model name [nombre] [modelo]` | Cambiar el nombre visible de un modelo |
 | `ocm model options [nombre] [modelo]` | Configurar contexto, modalidades y capacidades de un modelo |
-| `ocm model show [nombre] [modelo]` | Ver en detalle las opciones de un modelo |
+| `ocm model info [nombre] [modelo]` | Ver la configuración de un modelo en claro (solo lectura) |
+| `ocm model show [nombre] [modelo]` | Ver el JSON tal cual de un modelo |
 | `ocm model rm [nombre] [modelo]` | Quitar un modelo que ya no existe en el servidor |
 | `ocm configure [nombre]` | Reconfigurar un provider entero (nombre, URL, key, modelos) |
 | `ocm rename [nombre]` | Cambiar el nombre visible del provider |
@@ -293,8 +295,57 @@ el asistente y no se pierden. Al guardar solo reescribe las claves que has tocad
 (en las que el asistente manda); las ajenas como `options`, `variants` o `cost`
 nunca se tocan.
 
-Comandos relacionados: `ocm model show mole qwen3:14b` (ver el JSON de un modelo),
-`ocm model list mole` (tabla con nombre visible y opciones de todos).
+Comandos relacionados: `ocm model info mole qwen3:14b` (la ficha en claro),
+`ocm model show mole qwen3:14b` (el JSON tal cual), `ocm model list mole` (tabla con
+nombre visible y opciones de todos).
+
+### Consultar sin tocar nada: `ocm model info`
+
+```bash
+ocm model info mole qwen3:14b          # la ficha
+ocm model info mole qwen3:14b -a       # también las opciones avanzadas vacías
+ocm model info mole qwen3:14b --json   # el JSON efectivo, para scripts
+```
+
+Enseña de una vez lo que antes estaba repartido entre la caché y el JSON:
+
+```
+=== mole/qwen3:14b ===
+
+  Nombre visible                            Qwen 3 14B
+  Resumen                                   (ctx=131072, out_max=8192, in=text, out=text, tools)
+  En opencode.json                          si  provider.mole.models["qwen3:14b"]
+  En la cache                               si
+
+Provider
+  URL (cache)                               http://192.168.4.99:11434
+  URL (opencode)                            http://192.168.4.99:11434/v1
+  API key                                   ****abcd  (en la cache)
+  Ultimo escaneo                            2026-10-18 15:04  (ok)
+
+Opciones del modelo
+  Tokens de contexto (entrada)              131072 tokens (128k)
+  Tokens maximos de salida                  8192 tokens (8k)
+  Entradas que acepta                       text
+  Salidas que produce                       text  (lo asume opencode)
+  Es un modelo de razonamiento (thinking)   si
+  Soporta tool calling                      si
+
+Otras claves (el asistente no las toca)
+  options                                   {"temperature": 0.2}
+
+Comprobaciones
+  OK  la cache y opencode.json coinciden
+```
+
+Entre paréntesis marca lo que **no está escrito** y opencode aplica de todas formas,
+separa las claves que `ocm` no gestiona (ésas se conservan intactas) y, cuando la
+caché y `opencode.json` discrepan, lista las claves y dice la orden concreta para
+arreglarlo. Si el modelo vive sólo en el bloque plural `providers` —el que opencode
+2.0.x no llega a registrar—, lo avisa y ofrece `ocm config to-singular`.
+
+Es de solo lectura: no adopta opciones en la caché ni escribe backups, así que se
+puede consultar con la misma calma que un `cat`.
 
 ### Reconfigurar un provider: `ocm configure`
 

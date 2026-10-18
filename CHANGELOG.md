@@ -3,9 +3,23 @@
 Formato [Keep a Changelog](https://keepachangelog.com/es/1.1.0/), versionado
 [SemVer](https://semver.org/lang/es/).
 
-## [2.0.1] - 2026-10-18
+## [2.1.0] - 2026-10-18
 
-Ajustes del asistente de opciones, salidos de usarlo contra providers reales.
+Ajustes del asistente de opciones, salidos de usarlo contra providers reales, y una
+ficha para consultar la configuración de un modelo sin abrir el JSON.
+
+### Añadido
+
+- `ocm model info [PROVIDER] [MODELO]`: ficha en claro de un modelo —nombre visible,
+  dónde está (caché, bloque singular o bloque plural), URL, API key mascada, último
+  escaneo, opciones efectivas marcando lo que opencode asume, las claves que ocm no
+  toca, y en qué difieren caché y `opencode.json`. Es de solo lectura: a diferencia
+  de `ocm model show` no adopta opciones ni escribe en ningún fichero. Con
+  `--advanced` saca también las opciones avanzadas vacías, y con `--json` vuelca el
+  JSON efectivo del modelo.
+- Los modelos que sólo viven en el bloque plural `providers` ya no se muestran en
+  "sin definir": la ficha enseña lo que dice ese bloque, ya traducido al formato
+  singular, y ofrece `ocm config to-singular <PROVIDER>` para registrarlo.
 
 ### Cambiado
 
@@ -27,6 +41,10 @@ Ajustes del asistente de opciones, salidos de usarlo contra providers reales.
   in=text,image, out=text, reasoning, tools`).
 - Unas modalidades escritas a mano como texto (`"output": "text"`) se deshacían
   letra a letra al resumir el modelo.
+- El bloque plural `providers` escrito en lista (`"models": [{"modelID": ...}]`)
+  perdía todos sus modelos al detectarlos y al migrarlos con `ocm config
+  to-singular`; ahora se indexan por `modelID`/`id` y se traducen igual, avisando
+  del apaño.
 
 ## [2.0.0] - 2026-10-18
 

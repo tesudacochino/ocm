@@ -28,7 +28,7 @@ opencodeconfig/
 │       ├── __init__.py
 │       ├── utils.py           # get_provider_type, create_backup, build/merge de config
 │       ├── provider.py        # new, list, remove
-│       ├── model.py           # model list / name / rm / rename
+│       ├── model.py           # model list / info / name / rm / rename
 │       ├── options.py         # model options / show: asistente campo a campo
 │       ├── configure.py       # ocm configure: reconfigura el provider completo
 │       ├── encoded.py         # bloque plural 'providers': detectar, leer, validar, migrar
@@ -155,7 +155,8 @@ opencodeconfig/
 
 **`commands/`** - Lógica de cada comando:
 - `provider.py`: `new`, `list`, `remove`
-- `model.py`: `model list|name|rm`, `rename`
+- `model.py`: `model list|info|name|rm`, `rename`. `model info` es de solo lectura
+  (no adopta opciones en la caché ni guarda, a diferencia de `model show`)
 - `options.py`: `model options|show` (asistente de opciones)
 - `configure.py`: `ocm configure` (asistente de provider + poda)
 - `encoded.py`: bloque plural `providers` (deteccion, traduccion, `config to-singular`)
@@ -212,6 +213,7 @@ ocm model name [P] [M]           # Renombrar modelo (caché + opencode.json)
 ocm model options [P] [M]        # Asistente: contexto, modalidades, capacidades
 ocm model options P M --set limit.context=131072   # Sin preguntar (script)
 ocm model show [P] [M]           # Ver el JSON de las opciones de un modelo
+ocm model info [P] [M] [-a]      # Ficha legible; solo lectura, no escribe
 ocm model rm [P] [M] [-y]        # UNICO comando que borra un modelo (caché + config)
 ocm configure [PROVIDER]         # Asistente: nombre, URL, api key, estilo API, modelos, poda
 ocm rename [PROVIDER]            # Renombrar nombre visible del provider
