@@ -20,7 +20,6 @@ from .utils import (
     ENDPOINT_TIPO,
     ETIQUETA_FUENTE,
     TIPOS_ETIQUETA,
-    displayify,
     normalizar_tipo,
     provider_entry_from_config,
 )
@@ -262,9 +261,8 @@ def cmd_provider_new(manager: ConfigManager, args):
             provider_name = _ask_provider_name(existing_names, suggested=f"{provider_name}-2")
 
     # Nombre visible del provider: es el que aparece en el selector de /models
-    default_display = displayify(provider_name)
-    if provider_name in ("ollama", "vllm"):
-        default_display = provider_name.capitalize()
+    # Se sugiere tal cual lo escribio el usuario: 'chispa' -> 'chispa', no 'Chispa'
+    default_display = provider_name
     provider_display = ConfigUI.ask_input("Nombre visible del provider (el que muestra opencode)",
                                           default_display)
 

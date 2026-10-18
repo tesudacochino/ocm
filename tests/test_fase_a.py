@@ -212,11 +212,11 @@ def scenario_escaneo(home: Path):
     ]) + "\n")
     run(home, config, "new")
     entry = read(home / "provider_cache.json")["providers"]["wizard"]
-    check(entry.get("name") == "Wizard", "A2: pregunta y guarda el nombre visible del provider")
+    check(entry.get("name") == "wizard", "A2: pregunta y guarda el nombre visible del provider")
     check(entry["models"]["model-a"]["name"] == "Modelo Uno", "A2: pregunta el nombre por modelo")
     check(len(entry.get("uid", "")) == 8, "A3: genera uid para el provider nuevo")
     cfg = read(config)["provider"]["wizard"]
-    check(cfg["name"] == "Wizard", "A2: opencode.json recibe el nombre del provider")
+    check(cfg["name"] == "wizard", "A2: opencode.json recibe el nombre del provider")
     check(cfg["models"]["model-b"]["name"] == "Modelo Dos", "A2: opencode.json recibe los de modelos")
     check(cfg["options"]["apiKey"] == "sk-wiz", "A3: escribe la apiKey en options")
 
