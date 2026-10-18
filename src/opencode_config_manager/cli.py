@@ -23,7 +23,13 @@ from .commands.provider import cmd_provider_new, cmd_provider_list, cmd_provider
 from .commands.scan import cmd_scan
 from .commands.update import cmd_update_provider, cmd_update_global
 from .commands.cache import cmd_cache_list, cmd_cache_clear, cmd_cache_remove
-from .commands.model import cmd_model_list, cmd_model_rename, cmd_provider_rename
+from .commands.model import (
+    cmd_model_list,
+    cmd_model_remove,
+    cmd_model_rename,
+    cmd_provider_rename,
+)
+from .commands.configure import cmd_configure
 from .commands.options import cmd_model_options, cmd_model_show
 from .commands.debug import cmd_debug_config
 
@@ -49,7 +55,9 @@ Ejemplos:
   ocm model options [PROVIDER] [MODELO]  # Contexto, modalidades, capacidades
   ocm model options P M --set limit.context=131072 --set modalities.input=text,image
   ocm model show [PROVIDER] [MODELO]    # Ver sus opciones
-  ocm rename [PROVIDER]            # Renombrar el nombre visible de un provider
+  ocm model rm [PROVIDER] [MODELO]      # Quitar un modelo que ya no esta en el servidor
+  ocm configure [PROVIDER]       # Reconfigurar un provider (nombre, URL, key, modelos)
+  ocm rename [PROVIDER]          # Renombrar el nombre visible de un provider
   ocm config validate              # Validar integridad de la configuración
 
 Flujo típico:
@@ -102,7 +110,7 @@ Flujo típico:
     model_name.add_argument("--name", "-n", help="Nuevo nombre visible (si se omite, se pregunta)")
 
     model_options = model_sub.add_parser(
-        "options", aliases=["opts", "configure"],
+        "options", aliases=["opts"],
         help="Configurar las opciones de un modelo (contexto, modalidades, capacidades)")
     model_options.add_argument("provider", nargs="?", help="Provider (se pregunta si se omite)")
     model_options.add_argument("model", nargs="?", help="Modelo (se pregunta si se omite)")
@@ -119,9 +127,33 @@ Flujo típico:
     model_show.add_argument("provider", nargs="?", help="Provider (se pregunta si se omite)")
     model_show.add_argument("model", nargs="?", help="Modelo (se pregunta si se omite)")
 
+    model_rm = model_sub.add_parser("rm", aliases=["remove", "del"],
+                                    help="Quitar un modelo de la cache y de opencode.json")
+    model_rm.add_argument("provider", nargs="?", help="Provider (se pregunta si se omite)")
+    model_rm.add_argument("model", nargs="?", help="Modelo (se pregunta si se omite)")
+    model_rm.add_argument("--yes", "-y", action="store_true", help="No pedir confirmacion")
+
     rename_parser = subparsers.add_parser("rename", help="Cambiar el nombre visible de un provider")
     rename_parser.add_argument("provider", nargs="?", help="Provider (se pregunta si se omite)")
     rename_parser.add_argument("--name", "-n", help="Nuevo nombre visible (si se omite, se pregunta)")
+
+    # ── Grupo: configure (asistente de reconfiguracion) ───────────────
+    configure_parser = subparsers.add_parser(
+        "configure", aliases=["configurar"],
+        help="Reconfigurar un provider: nombre, URL, api key, estilo de API y modelos")
+    configure_parser.add_argument("provider", nargs="?", help="Provider (se pregunta si se omite)")
+    configure_parser.add_argument("--name", help="Fijar el nombre visible sin preguntar")
+    configure_parser.add_argument("--url", help="Fijar la URL base sin preguntar")
+    configure_parser.add_argument("--api-key", help="Fijar la api key sin preguntar")
+    configure_parser.add_argument("--model", help="Ir directamente a las opciones de este modelo")
+    configure_parser.add_argument("--advanced", action="store_true",
+                                  help="Incluir las opciones avanzadas al repasar modelos")
+    configure_parser.add_argument("--no-api-style", action="store_true",
+                                  help="No preguntar el estilo de API (npm)")
+    configure_parser.add_argument("--no-rescan", action="store_true",
+                                  help="No ofrecer un escaneo tras cambiar URL o api key")
+    configure_parser.add_argument("--no-prune", action="store_true",
+                                  help="No ofrecer quitar los modelos que ya no existen")
 
     # ── Grupo: cache (provider_cache.json) ───────────────────────────
     cache_parser = subparsers.add_parser("cache", help="Gestión de caché de providers")
@@ -184,10 +216,12 @@ def main(args: list = None):
         sub = getattr(parsed_args, "model_command", None)
         if sub in ("name", "rename"):
             cmd_model_rename(manager, parsed_args)
-        elif sub in ("options", "opts", "configure"):
+        elif sub in ("options", "opts"):
             cmd_model_options(manager, parsed_args)
         elif sub in ("show", "info"):
             cmd_model_show(manager, parsed_args)
+        elif sub in ("rm", "remove", "del"):
+            cmd_model_remove(manager, parsed_args)
         elif sub in ("list", "ls"):
             cmd_model_list(manager, parsed_args)
         else:
@@ -195,6 +229,10 @@ def main(args: list = None):
 
     elif parsed_args.command == "rename":
         cmd_provider_rename(manager, parsed_args)
+
+    # ── Grupo: configure (asistente de reconfiguracion) ──────────────
+    elif parsed_args.command in ("configure", "configurar"):
+        cmd_configure(manager, parsed_args)
 
     # ── Grupo: cache ─────────────────────────────────────────────────
     elif parsed_args.command in ("cache", "scan"):

@@ -20,6 +20,13 @@ from ..cache_models import (
 
 DEFAULT_NPM = "@ai-sdk/openai-compatible"
 
+# Estilos de API disponibles para un provider local estilo OpenAI. La clave es el
+# paquete `npm` que entiende opencode; el valor es lo que se muestra en el menu.
+API_STYLES = {
+    "@ai-sdk/openai-compatible": "OpenAI chat completions (vLLM, LM Studio, llama.cpp...)",
+    "@ai-sdk/openai": "OpenAI responses API",
+}
+
 # Claves de provider que ocm escribe (ProviderConfig en el schema de opencode)
 PROVIDER_FIELDS = ("api", "name", "env", "id", "npm", "whitelist", "blacklist")
 

@@ -28,8 +28,9 @@ opencodeconfig/
 │       ├── __init__.py
 │       ├── utils.py           # get_provider_type, create_backup, build/merge de config
 │       ├── provider.py        # new, list, remove
-│       ├── model.py           # model list / model name / rename
+│       ├── model.py           # model list / name / rm / rename
 │       ├── options.py         # model options / show: asistente campo a campo
+│       ├── configure.py       # ocm configure: reconfigura el provider completo
 │       ├── scan.py            # scan, scan_single_provider
 │       ├── update.py          # update provider/global
 │       ├── cache.py           # cache show/clear
@@ -104,12 +105,30 @@ opencodeconfig/
 - Cambiar opciones guarda la caché con `save_cache(touch=False)`: no mueve la fecha
   del ultimo escaneo
 
+**`commands/configure.py`** - `ocm configure`, el asistente de provider:
+- `cmd_configure()`: estado actual → campos del provider → estilo de API → escaneo
+  opcional → repasar modelos → poda opcional
+- `ask_optional()` / `mask_secret()`: Intro = KEEP, `-` = None, la api key se
+  pinta enmascarada (`sk-1******3456`)
+- `apply_provider_fields(manager, provider, cache_info, fields, backup_done)`:
+  vuelca `name|baseUrl|apiKey|npm` en caché y en `opencode.json`; deja backup con
+  `create_backup()` antes de la primera escritura
+- `_config_url()`: misma convencion que `build_provider_config` (la caché guarda
+  el host pelado, el config lleva `/v1`)
+- `ask_api_style_fields()` es el menu del SDK (`utils.API_STYLES`); lo reutiliza
+  `provider.ask_api_style` en `ocm new`
+- `_prune_gone_models()`: unicos lugares, junto a `ocm model rm`, donde se borra
+  un modelo de `opencode.json`; siempre con confirmacion previa
+
 **`cli.py`** - Parser + dispatch (~130 líneas):
 - Define argumentos con argparse
 - Dispatch a funciones en `commands/`
 
 **`commands/`** - Lógica de cada comando:
 - `provider.py`: `new`, `list`, `remove`
+- `model.py`: `model list|name|rm`, `rename`
+- `options.py`: `model options|show` (asistente de opciones)
+- `configure.py`: `ocm configure` (asistente de provider + poda)
 - `scan.py`: escaneo de APIs
 - `update.py`: actualización de `opencode.json`
 - `cache.py`: gestión de caché
@@ -132,6 +151,15 @@ user → ocm update     → Lee caché
                        → build_provider_config() (deseado)
                        → merge_provider_config() con lo que hay en opencode.json
                        → Backup + escribir (solo añade, no borra)
+
+user → ocm configure  → refresh_cache_from_config() (adopta lo escrito a mano)
+                       → pregunta campo a campo mostrando el valor actual
+                       → apply_provider_fields() / sync_model_config(): escribe
+                         solo las claves respondidas, con backup
+                       → ofrece escaneo y poda de modelos que ya no existen
+
+user → ocm model rm   → unico camino que borra un modelo (caché + opencode.json),
+                       con confirmacion y backup
 ```
 
 ## Comandos principales
@@ -148,6 +176,8 @@ ocm model name [P] [M]           # Renombrar modelo (caché + opencode.json)
 ocm model options [P] [M]        # Asistente: contexto, modalidades, capacidades
 ocm model options P M --set limit.context=131072   # Sin preguntar (script)
 ocm model show [P] [M]           # Ver el JSON de las opciones de un modelo
+ocm model rm [P] [M] [-y]        # UNICO comando que borra un modelo (caché + config)
+ocm configure [PROVIDER]         # Asistente: nombre, URL, api key, estilo API, modelos, poda
 ocm rename [PROVIDER]            # Renombrar nombre visible del provider
 
 # Caché → provider_cache.json

@@ -9,7 +9,11 @@ y son los que usan el asistente de reconfiguración.
 from ..config import ConfigManager, ConfigUI, Colors
 from ..cache_models import normalize_models, set_model_option
 from ..model_fields import describe_model
-from .utils import provider_entry_from_config, refresh_cache_from_config
+from .utils import (
+    create_backup,
+    provider_entry_from_config,
+    refresh_cache_from_config,
+)
 
 
 def _cache_entry(manager: ConfigManager, provider: str) -> dict:
@@ -185,3 +189,75 @@ def cmd_provider_rename(manager: ConfigManager, args):
 
     if not changed:
         ConfigUI.print_info(f"El provider ya se llama '{value}'.")
+
+
+def cmd_model_remove(manager: ConfigManager, args):
+    """`ocm model rm`: quitar un modelo de la caché y de opencode.json.
+
+    Es el unico comando de ocm que borra un modelo. `ocm update` nunca lo hace,
+    para no perder configuraciones escritas a mano.
+    """
+    provider = resolve_provider(manager, getattr(args, "provider", None))
+    if not provider:
+        return
+
+    cache_info = _cache_entry(manager, provider) or {}
+    models = normalize_models(cache_info.get("models"))
+    entry = provider_entry_from_config(manager, provider)
+    configured = entry.get("models")
+    if not isinstance(configured, dict):
+        configured = {}
+
+    model_id = getattr(args, "model", None)
+    if not model_id:
+        ids = list(dict.fromkeys(list(models) + list(configured)))
+        if not ids:
+            ConfigUI.print_error(f"'{provider}' no tiene modelos que quitar.")
+            return
+        model_id = _pick_from_list(ids, "modelo a quitar")
+    if not model_id:
+        return
+
+    if model_id not in models and model_id not in configured:
+        ConfigUI.print_error(f"El modelo '{model_id}' no existe en '{provider}'.")
+        for known in list(models) + list(configured):
+            print(f"  - {known}")
+        return
+
+    usar_default = (manager.config_data or {}).get("model")
+    if usar_default == f"{provider}/{model_id}":
+        ConfigUI.print_warning(
+            f"'{model_id}' es el modelo por defecto (clave \"model\": "
+            f"\"{usar_default}\"). Tendras que elegir otro en opencode.json o con "
+            "'ocm update --default'."
+        )
+
+    if not getattr(args, "yes", False):
+        print(f"\nSe quitara {Colors.BOLD}{provider}/{model_id}{Colors.RESET} de:")
+        print("  - provider_cache.json" + ("" if model_id in models else "  (no estaba)"))
+        print("  - opencode.json" + ("" if model_id in configured else "  (no estaba)"))
+        if not ConfigUI.ask_yes_no("Confirmar?", default="n"):
+            ConfigUI.print_info("Cancelado.")
+            return
+
+    removed_any = False
+    if model_id in models:
+        models.pop(model_id)
+        cache_info["models"] = models
+        manager.cache_data.setdefault("providers", {})[provider] = cache_info
+        manager.save_cache(touch=False)
+        removed_any = True
+
+    if model_id in configured:
+        configured.pop(model_id)
+        entry["models"] = configured
+        create_backup(manager.config_path)
+        manager.config_data.setdefault("provider", {})[provider] = entry
+        manager.save_config()
+        removed_any = True
+
+    if removed_any:
+        ConfigUI.print_success(f"Quitado {provider}/{model_id}.")
+        print("Revisa con: " + Colors.CYAN + f"ocm model list {provider}" + Colors.RESET)
+    else:
+        ConfigUI.print_info("No habia nada que quitar.")

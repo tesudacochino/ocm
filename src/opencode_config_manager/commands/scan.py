@@ -68,7 +68,8 @@ def scan_single_provider(provider_name: str, cached_info: dict, manager: ConfigM
         print(f"  {Colors.BRIGHT_RED}Eliminados del provider:{Colors.RESET} {removed_str}")
         if config_data and provider_name in (config_data.get("provider", {}) or {}):
             print(f"  {Colors.YELLOW}Nota:{Colors.RESET} 'ocm update' no borra modelos ya escritos; "
-                  f"edítalos a mano en opencode.json si quieres quitarlos.")
+                  f"quítalos con 'ocm model rm {provider_name} <MODELO>' o con "
+                  f"'ocm configure {provider_name}', que ofrece la limpieza.")
 
     # Actualizar caché preservando uid, nombre visible, api key y opciones por modelo
     cached_info["models"] = new_models

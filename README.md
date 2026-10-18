@@ -32,6 +32,8 @@ ocm list                           # Ver providers configurados
 ocm model list                     # Ver modelos y sus nombres visibles
 ocm model name mole qwen3:14b      # Cambiar el nombre que muestra opencode
 ocm model options mole qwen3:14b   # Contexto, visión, herramientas, thinking
+ocm configure mole                 # Repasar el provider entero (URL, key, nombres, modelos)
+ocm model rm mole modelo-viejo     # Quitar un modelo que ya no esta en el servidor
 ocm rename mole                    # Cambiar el nombre visible del provider
 ```
 
@@ -49,6 +51,8 @@ ocm rename mole                    # Cambiar el nombre visible del provider
 | `ocm model name [nombre] [modelo]` | Cambiar el nombre visible de un modelo |
 | `ocm model options [nombre] [modelo]` | Configurar contexto, modalidades y capacidades de un modelo |
 | `ocm model show [nombre] [modelo]` | Ver en detalle las opciones de un modelo |
+| `ocm model rm [nombre] [modelo]` | Quitar un modelo que ya no existe en el servidor |
+| `ocm configure [nombre]` | Reconfigurar un provider entero (nombre, URL, key, modelos) |
 | `ocm rename [nombre]` | Cambiar el nombre visible del provider |
 
 > `ocm model name` y `ocm rename` actualizan **a la vez** la caché y `opencode.json`,
@@ -85,6 +89,9 @@ ocm new          →  Asistente         →  provider_cache.json  (+ opencode.js
 ocm cache update →  Escanea APIs      →  provider_cache.json
 ocm update       →  Lee caché         →  opencode.json  (solo añade, no pisa)
 ocm list         →  Muestra config    ←  opencode.json
+ocm configure    →  Repasa un provider →  caché + opencode.json  (con backup)
+ocm model options → Opciones de modelo →  caché + opencode.json
+ocm model rm     →  Quita un modelo    ←  caché + opencode.json
 ```
 
 **Ejemplo completo:**
@@ -107,6 +114,15 @@ ocm list
 
 # 5. Comparar con la caché (opcional)
 ocm cache list
+
+# 6. Ajustar opciones de un modelo (contexto, visión, herramientas)
+ocm model options mole qwen3:14b
+
+# 7. Cambiar la URL del provider o repasar todo (ofrece escaneo y limpieza)
+ocm configure mole
+
+# 8. Quitar un modelo que ya no existe en el servidor
+ocm model rm mole modelo-viejo
 ```
 
 > **Nota:** `ocm update` usa datos de caché, no escanea en tiempo real. Ejecuta siempre `ocm cache update` antes.
@@ -262,6 +278,67 @@ nunca se tocan.
 
 Comandos relacionados: `ocm model show mole qwen3:14b` (ver el JSON de un modelo),
 `ocm model list mole` (tabla con nombre visible y opciones de todos).
+
+### Reconfigurar un provider: `ocm configure`
+
+```bash
+ocm configure                      # pregunta que provider
+ocm configure mole                 # directo a ese provider
+ocm configure mole --name "Mole Casa" --url http://192.168.4.99:11434
+ocm configure mole --model qwen3:14b --advanced   # salta a las opciones avanzadas de ese modelo
+```
+
+Muestra el estado actual y va preguntando campo a campo, con las mismas teclas
+que el asistente de opciones (`Intro` mantiene, valor nuevo reemplaza, `-` quita,
+`?` ayuda):
+
+```
+=== Reconfigurar provider: mole ===
+
+  Nombre visible : Mole
+  URL base       : http://127.0.0.1:11434
+  API key        : sk-1******3456
+  SDK (npm)      : @ai-sdk/openai-compatible
+  Tipo detectado : vllm
+
+  Nombre visible del provider [Mole] (el que sale en /models):
+  URL base [http://127.0.0.1:11434] (ej: http://192.168.1.5:11434 (sin /v1)):
+  API key (Intro mantiene la guardada):
+Estilo de API del provider
+  1) OpenAI chat completions (vLLM, LM Studio, llama.cpp...) *
+  2) OpenAI responses API
+```
+
+Despues enseña la tabla de modelos, deja repasar uno (o `todos`) y, si hay
+modelos en `opencode.json` que ya no aparecen en el ultimo escaneo, **ofrece
+quitarlos** (con `n` se quedan como estaban).
+
+La api key nunca se muestra entera en pantalla: se ve `sk-1******3456`.
+
+| Flag | Para que |
+|------|----------|
+| `--name` / `--url` / `--api-key` | fijar el campo sin preguntar (para scripts) |
+| `--model MODELO` | ir directamente a las opciones de ese modelo |
+| `--advanced` | incluir las opciones avanzadas al repasar modelos |
+| `--no-api-style` | no preguntar el SDK (`npm`) |
+| `--no-rescan` | no ofrecer un escaneo al cambiar URL o api key |
+| `--no-prune` | no ofrecer la limpieza de modelos |
+
+A diferencia de `ocm update`, esto escribe en `opencode.json` en el momento (es
+una accion explicita tuya) y hace backup antes del primer cambio.
+
+### Quitar un modelo: `ocm model rm`
+
+`ocm update` **nunca** borra modelos, para no perder lo que escribiste a mano.
+El unico sitio donde se borra uno es aqui:
+
+```bash
+ocm model rm mole modelo-viejo     # pregunta confirmacion
+ocm model rm mole modelo-viejo -y  # sin preguntar
+```
+
+Lo quita de la caché y de `opencode.json`, crea backup y avisa si era el modelo
+por defecto (la clave `"model"` de opencode.json).
 
 ### El formato nuevo de opencode v2 (`providers`, en plural)
 

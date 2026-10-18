@@ -9,6 +9,7 @@ from ..config import ConfigManager, ConfigUI, Colors
 from ..api import ProviderScanner
 from ..cache_models import ensure_uid, normalize_models
 from ..model_fields import describe_model
+from .configure import ask_api_style_fields
 from .options import configure_model_entry
 from .utils import displayify, provider_entry_from_config
 
@@ -158,30 +159,20 @@ def ask_api_style(manager: ConfigManager, provider_name: str, cache_entry: dict,
     Solo aplica a endpoints estilo OpenAI: Ollama siempre usa chat completions.
     Se guarda en la caché como `npm`, que es lo que acaba en `provider.<id>.npm`.
     """
-    if provider_type != "vllm":
+    chosen = ask_api_style_fields({**(previous or {}), **cache_entry}, provider_type)
+    if not chosen:
         return cache_entry
 
-    options_map = {
-        "@ai-sdk/openai-compatible": "OpenAI chat completions (vLLM, LM Studio, llama.cpp...)",
-        "@ai-sdk/openai": "OpenAI responses API",
-    }
-    keys = list(options_map)
-    current = cache_entry.get("npm") or previous.get("npm") or keys[0]
-    labels = [options_map[key] for key in keys]
-    current_label = labels[keys.index(current)] if current in keys else labels[0]
-
-    choice = ConfigUI.ask_choice("Estilo de API del provider", labels, default=current_label)
-    chosen = keys[labels.index(choice)] if choice in labels else current
-    cache_entry["npm"] = chosen
+    cache_entry.update(chosen)
 
     # Si el provider ya estaba escrito, se actualiza aqui mismo: es una decision
     # explicita del usuario y 'ocm update' no pisa claves existentes.
     entry = provider_entry_from_config(manager, provider_name)
-    if entry and entry.get("npm") != chosen:
-        entry["npm"] = chosen
+    if entry and entry.get("npm") != chosen["npm"]:
+        entry["npm"] = chosen["npm"]
         manager.config_data.setdefault("provider", {})[provider_name] = entry
         manager.save_config()
-        ConfigUI.print_success(f"SDK del provider: {chosen}")
+        ConfigUI.print_success(f"SDK del provider: {chosen['npm']}")
 
     return cache_entry
 
