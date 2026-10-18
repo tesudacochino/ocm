@@ -20,21 +20,21 @@ opencodeconfig/
 │   ├── __init__.py            # Exportaciones públicas
 │   ├── __main__.py            # Entry point para python -m
 │   ├── config.py              # ConfigManager, ConfigUI, Colors
-│   ├── api.py                 # ProviderScanner, ScanResult
+│   ├── api.py                 # ProviderScanner, ScanResult, ProbeResult (probe)
 │   ├── cache_models.py        # Modelo de datos de la caché (v2) + migración
 │   ├── model_fields.py        # Spec declarativa de las opciones de un modelo
 │   ├── cli.py                 # Parser argparse + dispatch
 │   └── commands/
 │       ├── __init__.py
-│       ├── utils.py           # get_provider_type, create_backup, build/merge de config
+│       ├── utils.py           # get_provider_type, estado_tipo, create_backup, build/merge de config
 │       ├── provider.py        # new, list, remove
 │       ├── model.py           # model list / info / name / rm / rename
 │       ├── options.py         # model options / show: asistente campo a campo
 │       ├── configure.py       # ocm configure: reconfigura el provider completo
 │       ├── encoded.py         # bloque plural 'providers': detectar, leer, validar, migrar
-│       ├── scan.py            # scan, scan_single_provider
+│       ├── scan.py            # scan, scan_single_provider (autodeteccion y arreglo del tipo)
 │       ├── update.py          # update provider/global
-│       ├── cache.py           # cache show/clear
+│       ├── cache.py           # cache show/clear/type
 │       └── debug.py           # debug config, validate_config
 ├── scripts/
 │   ├── ccl                    # Wrapper Linux/macOS
@@ -58,7 +58,29 @@ opencodeconfig/
 **`api.py`** - Clase `ProviderScanner` + `ScanResult`:
 - `scan_ollama()` → `GET /api/tags` → `ScanResult`
 - `scan_vllm()` → `GET /v1/models` → `ScanResult`
+- `probe()` → prueba los dos y devuelve `ProbeResult(tipo, models, endpoint, errores)`;
+  es la autodeteccion. Va por los dos escaneos, asi que quien los sustituya en las
+  pruebas (o en un caso raro) sigue afectando a lo que detecta
+- exigimos la FORMA del JSON, no solo el 200: sin `models` no es ollama y sin `data`
+  no es vllm (un proxy que devuelve una pagina ya no se confunde con un provider)
+- `_get_json()` captura RequestException **y** ValueError: un 200 con HTML devuelve
+  error en vez de reventar
+- ollama tambien sirve `/v1/models`, asi que lo unico que lo distingue es `/api/tags`
 - `ScanResult` dataclass con `.success`, `.models`, `.error`
+
+**El tipo de provider** (`ollama` | `vllm`) es un dato **de ocm, no de opencode**: solo
+cambia que endpoint se escanea. `build_provider_config` ya no lo mira: la URL lleva
+`/v1` en los dos casos (ambos sirven la API de OpenAI ahi), asi que `opencode.json`
+sale identico con cualquier tipo. En la caché se guardan `provider_type`,
+`type_source` (`auto`/`manual`) y `type_evidence` (el endpoint por el que respondio el
+servidor en el ultimo escaneo). Reglas en `scan_single_provider`:
+- sin tipo → `probe()` y se guarda con `type_source="auto"`
+- el tipo no responde → se prueba el otro; si funciona, se corrige el tipo y se avisa
+- si alguien lo fijo a mano (`type_source="manual"` o `--type`) se escanea con el que
+  funciona pero **no se cambia**: solo se avisa y se dice como soltarlo
+- los dos fallan → `reachable=False` + `last_scan_error`, sin tocar modelos ni tipo
+- `normalizar_tipo()` (en `utils.py`) pasa alias como `llama.cpp` o `lmstudio` a
+  `vllm`; `estado_tipo()` y `tipo_guardado()` dan el estado para fichas y asistentes
 
 **`cache_models.py`** - Datos de la caché por modelo:
 - `models` en la caché es un dict `{model_id: {name, limit, modalities, ...}}`

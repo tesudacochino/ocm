@@ -12,26 +12,26 @@ from ..model_fields import describe_model
 from .configure import ask_api_style_fields
 from .encoded import print_encoded_notice
 from .options import configure_model_entry
-from .utils import displayify, provider_entry_from_config
+from .utils import (
+    ENDPOINT_TIPO,
+    ETIQUETA_FUENTE,
+    TIPOS_ETIQUETA,
+    displayify,
+    normalizar_tipo,
+    provider_entry_from_config,
+)
 
 
 def detect_provider_type(base_url: str, api_key: str = None) -> tuple[str, list[str]]:
     """Detectar automáticamente si es Ollama o vLLM escaneando la API.
 
-    Retorna (tipo, lista de modelos)
+    Delega en ProviderScanner.probe, que mira la FORMA de la respuesta: ollama
+    tambien sirve /v1/models, asi que lo que decide es que exista /api/tags.
+
+    Retorna (tipo, lista de modelos), con tipo None si no responde a nada.
     """
-    # Probar Ollama primero (endpoint más común)
-    result_ollama = ProviderScanner.scan_ollama(base_url, api_key)
-    if result_ollama.success and result_ollama.models:
-        return "ollama", result_ollama.models
-
-    # Si falla, probar vLLM
-    result_vllm = ProviderScanner.scan_vllm(base_url, api_key)
-    if result_vllm.success and result_vllm.models:
-        return "vllm", result_vllm.models
-
-    # Ninguno funciona
-    return None, []
+    prueba = ProviderScanner.probe(base_url, api_key)
+    return prueba.tipo, prueba.models
 
 
 def print_provider_config_info(provider_name: str, provider_config: dict):
@@ -72,7 +72,13 @@ def print_provider_cache_info(provider_name: str, cache_info: dict):
         print(f"  UID: {cache_info['uid']}")
     print(f"  Nombre: {cache_info.get('name') or provider_name}")
     print(f"  URL base: {base_url}")
-    print(f"  Tipo: {cache_info.get('provider_type', 'unknown')}")
+    tipo = cache_info.get("provider_type") or Colors.YELLOW + "sin definir" + Colors.RESET
+    notas = []
+    if cache_info.get("type_source") in ETIQUETA_FUENTE:
+        notas.append(ETIQUETA_FUENTE[cache_info["type_source"]])
+    if cache_info.get("type_evidence"):
+        notas.append("último escaneo por " + cache_info["type_evidence"])
+    print(f"  Tipo: {tipo}" + (f"  ({' · '.join(notas)})" if notas else ""))
     if cache_info.get("apiKey"):
         print("  API Key: guardada")
     if cache_info.get("reachable") is False:
@@ -249,9 +255,46 @@ def cmd_provider_new(manager: ConfigManager, args):
     default_key = previous.get("apiKey", "")
     api_key = ConfigUI.ask_input("API Key (dejar vacío si no requiere)", default_key)
 
-    # Detectar automáticamente si es Ollama o vLLM
-    print("\nDetectando tipo de provider...")
-    provider_type, models = detect_provider_type(base_url, api_key or None)
+    # Tipo de servidor: lo fija el flag --type; si no, se detecta probando endpoints
+    pedido = None
+    tipo_flag = getattr(args, "type", None)
+    if tipo_flag:
+        texto = str(tipo_flag).strip().lower()
+        if texto != "auto":
+            pedido = normalizar_tipo(texto)
+            if not pedido:
+                ConfigUI.print_error(f"Tipo '{tipo_flag}' desconocido; "
+                                     "vale 'ollama', 'vllm' o 'auto'.")
+                return
+
+    provider_type = None
+    models = []
+    evidencia = None
+    fuente = None
+
+    if pedido:
+        print(f"\nEscaneando {base_url} como {pedido}...")
+        if pedido == "vllm":
+            resultado = ProviderScanner.scan_vllm(base_url, api_key or None)
+        else:
+            resultado = ProviderScanner.scan_ollama(base_url, api_key or None)
+        provider_type, fuente = pedido, "manual"
+        if resultado.success:
+            models, evidencia = resultado.models, ENDPOINT_TIPO[pedido]
+        else:
+            ConfigUI.print_error(f"No responde por {ENDPOINT_TIPO[pedido]}: {resultado.error}")
+            prueba = ProviderScanner.probe(base_url, api_key or None)
+            if prueba.tipo:
+                ConfigUI.print_warning(
+                    f"Si responde a {prueba.endpoint} ({prueba.tipo}); lo dejo en '{pedido}' "
+                    f"porque lo fijaste. Para seguir al servidor: "
+                    f"ocm cache type {provider_name} auto")
+                models, evidencia = prueba.models, prueba.endpoint
+    else:
+        print("\nDetectando tipo de provider...")
+        prueba = ProviderScanner.probe(base_url, api_key or None)
+        provider_type, models, evidencia = prueba.tipo, prueba.models, prueba.endpoint
+        fuente = "auto" if provider_type else None
 
     if not provider_type:
         ConfigUI.print_error(f"No se pudo detectar el provider en {base_url}")
@@ -259,8 +302,11 @@ def cmd_provider_new(manager: ConfigManager, args):
         if not ConfigUI.ask_yes_no("¿Crear el provider de todos modos (sin modelos)?", default="n"):
             print("Operación cancelada.")
             return
-        provider_type = previous.get("provider_type") or ConfigUI.ask_input(
-            "Tipo de provider (ollama/vllm)", "ollama")
+        # Ya no se escribe a mano: se elige uno de los dos tipos validos
+        etiquetas = [TIPOS_ETIQUETA["vllm"], TIPOS_ETIQUETA["ollama"]]
+        elegida = ConfigUI.ask_choice("Tipo de servidor", etiquetas, default=etiquetas[1])
+        provider_type = "vllm" if elegida == etiquetas[0] else "ollama"
+        evidencia, fuente = ENDPOINT_TIPO[provider_type], "manual"
         models = list(normalize_models(previous.get("models")))
         if models:
             ConfigUI.print_info(f"Se conservan {len(models)} modelos de la caché.")
@@ -284,9 +330,14 @@ def cmd_provider_new(manager: ConfigManager, args):
         "name": provider_display or provider_name,
         "baseUrl": base_url,
         "provider_type": provider_type,
+        "type_source": fuente,
+        "type_evidence": evidencia,
         "reachable": bool(models),
         "last_scan": int(time.time()) if models else previous.get("last_scan", 0),
     })
+    for clave in ("type_source", "type_evidence"):
+        if cache_entry.get(clave) is None:
+            cache_entry.pop(clave, None)
     if api_key:
         cache_entry["apiKey"] = api_key
     else:

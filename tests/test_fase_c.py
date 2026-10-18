@@ -124,8 +124,8 @@ def scenario_provider_fields(home: Path, config: Path):
     print("\n=== C1: campos del provider ===")
     setup(home)
 
-    #  nombre | url | apiKey | estilo API | modelo a repasar
-    feed("Mole Casa", "", "", "2", "")
+    #  nombre | url | apiKey | tipo | estilo API | modelo a repasar
+    feed("Mole Casa", "", "", "", "2", "")
     run(home, config, "configure", "mole", "--no-rescan", "--no-prune")
 
     cache = read(home / "provider_cache.json")
@@ -154,8 +154,8 @@ def scenario_no_changes(home: Path, config: Path):
     setup(home)
     antes_bytes = config.read_bytes()
 
-    #  nombre | url | apiKey | modelo a repasar
-    feed("", "", "", "")
+    #  nombre | url | apiKey | tipo | modelo a repasar
+    feed("", "", "", "", "")
     run(home, config, "configure", "mole", "--no-rescan", "--no-api-style", "--no-prune")
 
     check(config.read_bytes() == antes_bytes, "C2: opencode.json queda byte a byte igual")
@@ -177,8 +177,8 @@ def scenario_url(home: Path, config: Path):
     print("\n=== C3: cambiar la URL ===")
     setup(home)
 
-    #  nombre | apiKey | modelo a repasar  (la URL va por flag)
-    feed("", "", "")
+    #  nombre | apiKey | tipo | modelo a repasar  (la URL va por flag)
+    feed("", "", "", "")
     run(home, config, "configure", "mole", "--url", "http://192.168.4.99:11434/",
         "--no-rescan", "--no-api-style", "--no-prune")
 
@@ -201,8 +201,8 @@ def scenario_api_key(home: Path, config: Path):
           "C4: la api key se muestra enmascarada")
     check(mask_secret("") == "", "C4: sin key no se muestra nada")
 
-    #  nombre | url | modelo a repasar  (la key va por flag)
-    feed("", "", "")
+    #  nombre | url | tipo | modelo a repasar  (la key va por flag)
+    feed("", "", "", "")
     run(home, config, "configure", "mole", "--api-key", "sk-nueva-1234",
         "--no-rescan", "--no-api-style", "--no-prune")
     mole = read(config)["provider"]["mole"]
@@ -210,8 +210,8 @@ def scenario_api_key(home: Path, config: Path):
     check(read(home / "provider_cache.json")["providers"]["mole"]["apiKey"] == "sk-nueva-1234",
           "C4: --api-key escribe en la cache")
 
-    #  nombre | url | apiKey ('-' para quitarla) | modelo a repasar
-    feed("", "", "-", "")
+    #  nombre | url | apiKey ('-' para quitarla) | tipo | modelo a repasar
+    feed("", "", "-", "", "")
     run(home, config, "configure", "mole", "--no-rescan", "--no-api-style", "--no-prune")
     mole = read(config)["provider"]["mole"]
     check("apiKey" not in mole["options"], "C4: '-' quita la api key del config")
@@ -224,8 +224,8 @@ def scenario_models_step(home: Path, config: Path):
     print("\n=== C5: repasar modelos desde configure ===")
     setup(home)
 
-    #  nombre | url | apiKey | modelo | 7 campos del modelo
-    feed("", "", "", "qwen3:14b",
+    #  nombre | url | apiKey | tipo | modelo | 7 campos del modelo
+    feed("", "", "", "", "qwen3:14b",
          "", "131072", "", "1,3", "", "y", "y")
     run(home, config, "configure", "mole", "--no-rescan", "--no-api-style", "--no-prune")
 
@@ -249,8 +249,8 @@ def scenario_prune(home: Path, config: Path):
     print("\n=== C6: podar modelos que ya no estan ===")
     setup(home)
 
-    #  nombre | url | apiKey | modelo a repasar | ¿quitar los que ya no estan?
-    feed("", "", "", "", "y")
+    #  nombre | url | apiKey | tipo | modelo a repasar | ¿quitar los que ya no estan?
+    feed("", "", "", "", "", "y")
     run(home, config, "configure", "mole", "--no-rescan", "--no-api-style")
 
     mole = read(config)["provider"]["mole"]

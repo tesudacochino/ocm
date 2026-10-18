@@ -21,7 +21,12 @@ from ._version import get_version_string
 from .commands.provider import cmd_provider_new, cmd_provider_list, cmd_provider_remove
 from .commands.scan import cmd_scan
 from .commands.update import cmd_update_provider, cmd_update_global
-from .commands.cache import cmd_cache_list, cmd_cache_clear, cmd_cache_remove
+from .commands.cache import (
+    cmd_cache_clear,
+    cmd_cache_list,
+    cmd_cache_remove,
+    cmd_cache_type,
+)
 from .commands.model import (
     cmd_model_info,
     cmd_model_list,
@@ -49,6 +54,7 @@ Ejemplos:
   ocm update [PROVIDER]            # Actualizar configuración de opencode
   ocm cache update [PROVIDER]      # Escanear APIs y actualizar caché
   ocm cache list                   # Listar providers en caché
+  ocm cache type [PROVIDER] [TIPO] # Si es Ollama o vLLM (afecta solo al escaneo de ocm)
   ocm cache rm <nombre>            # Eliminar provider de caché
   ocm cache clear                  # Borrar toda la caché
   ocm model list [PROVIDER]        # Modelos y nombres visibles
@@ -88,7 +94,10 @@ Flujo típico:
     subparsers = parser.add_subparsers(dest="command", help="Comandos disponibles")
 
     # ── Comandos principales (opencode.json) ─────────────────────────
-    subparsers.add_parser("new", help="Crear o reconfigurar un provider (asistente)")
+    new_parser = subparsers.add_parser("new", help="Crear o reconfigurar un provider (asistente)")
+    new_parser.add_argument("--type",
+                            help="Tipo de servidor: 'ollama', 'vllm' o 'auto' (por defecto auto). "
+                                 "Solo cambia que endpoint escanea ocm; opencode lee lo mismo")
     subparsers.add_parser("list", aliases=["ls"], help="Listar providers configurados")
 
     rm_parser = subparsers.add_parser("remove", aliases=["rm"], help="Eliminar un provider")
@@ -157,6 +166,9 @@ Flujo típico:
     configure_parser.add_argument("--name", help="Fijar el nombre visible sin preguntar")
     configure_parser.add_argument("--url", help="Fijar la URL base sin preguntar")
     configure_parser.add_argument("--api-key", help="Fijar la api key sin preguntar")
+    configure_parser.add_argument("--type",
+                                  help="Fijar el tipo de servidor: 'ollama', 'vllm' o 'auto' "
+                                       "(afecta solo al escaneo de ocm, no a opencode.json)")
     configure_parser.add_argument("--model", help="Ir directamente a las opciones de este modelo")
     configure_parser.add_argument("--advanced", action="store_true",
                                   help="Incluir las opciones avanzadas al repasar modelos")
@@ -172,7 +184,15 @@ Flujo típico:
     cache_sub = cache_parser.add_subparsers(dest="cache_command", help="Comandos de caché")
     cache_update = cache_sub.add_parser("update", help="Escanear APIs y actualizar caché")
     cache_update.add_argument("provider", nargs="?", help="Provider específico (opcional)")
+    cache_update.add_argument("--type",
+                              help="Forzar el endpoint de este escaneo: 'ollama', 'vllm' o "
+                                   "'auto' para volver a detectarlo")
     cache_sub.add_parser("list", aliases=["ls"], help="Listar providers en caché")
+    cache_type = cache_sub.add_parser(
+        "type", aliases=["tipo"],
+        help="Ver o fijar si un provider es Ollama o vLLM (solo afecta al escaneo)")
+    cache_type.add_argument("provider", nargs="?", help="Provider (lista todos si se omite)")
+    cache_type.add_argument("tipo", nargs="?", help="'ollama', 'vllm' o 'auto'")
     cache_rm = cache_sub.add_parser("remove", aliases=["rm"], help="Eliminar provider de caché")
     cache_rm.add_argument("provider", help="Nombre del provider a eliminar")
     cache_sub.add_parser("clear", help="Borrar toda la caché")
@@ -206,6 +226,8 @@ Flujo típico:
     # ── Alias oculto: scan → cache update ────────────────────────────
     scan_parser = subparsers.add_parser("scan")
     scan_parser.add_argument("provider", nargs="?", help="Provider específico (opcional)")
+    scan_parser.add_argument("--type",
+                             help="Forzar el endpoint: 'ollama', 'vllm' o 'auto'")
     subparsers._choices_actions = [a for a in subparsers._choices_actions if a.dest != "scan"]
 
     return parser
@@ -278,6 +300,8 @@ def main(args: list = None):
                 cmd_cache_list(manager, parsed_args)
             elif sub in ("remove", "rm"):
                 cmd_cache_remove(manager, parsed_args)
+            elif sub in ("type", "tipo"):
+                cmd_cache_type(manager, parsed_args)
             else:
                 # Sin subcomando → mostrar lista de caché
                 cmd_cache_list(manager, parsed_args)

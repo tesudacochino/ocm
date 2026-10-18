@@ -31,7 +31,7 @@ jobs:
       - name: Run regression suites
         shell: bash
         run: |
-          for fase in a b c d e; do
+          for fase in a b c d e f; do
             echo "::group::tests/test_fase_$fase.py"
             uv run python tests/test_fase_$fase.py
             echo "::endgroup::"

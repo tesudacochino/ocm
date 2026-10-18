@@ -21,7 +21,10 @@ from ..model_fields import (
 )
 from .encoded import encoded_entry, encoded_providers, provider_from_encoded
 from .utils import (
+    ENDPOINT_TIPO,
+    ETIQUETA_FUENTE,
     create_backup,
+    estado_tipo,
     provider_entry_from_config,
     refresh_cache_from_config,
 )
@@ -334,8 +337,21 @@ def cmd_model_info(manager: ConfigManager, args):
 
     _fila("Nombre", cache_info.get("name") or entrada_provider.get("name")
           or entrada_codificada.get("name") or provider)
-    if cache_info.get("provider_type"):
-        _fila("Tipo", cache_info["provider_type"])
+    estado = estado_tipo(provider, cache_info, manager)
+    if estado["tipo"] or estado["fuente"] or estado["evidencia"]:
+        notas = []
+        if estado["fuente"]:
+            notas.append(ETIQUETA_FUENTE[estado["fuente"]])
+        if estado["evidencia"]:
+            notas.append("ultimo escaneo por " + estado["evidencia"])
+        esperado = ENDPOINT_TIPO.get(estado["tipo"])
+        if estado["evidencia"] and esperado and estado["evidencia"] != esperado:
+            notas.append(Colors.YELLOW + f"el servidor no contesta a {esperado}; "
+                                         f"'ocm cache type {provider} auto' lo arregla"
+                         + Colors.RESET)
+        detalle = f"  ({' · '.join(notas)})" if notas else ""
+        valor = estado["tipo"] or (Colors.YELLOW + "sin definir" + Colors.RESET)
+        _fila("Tipo", valor + detalle)
     npm = (entrada_provider.get("npm") or cache_info.get("npm")
            or entrada_codificada.get("package"))
     if npm:

@@ -5,10 +5,25 @@ Formato [Keep a Changelog](https://keepachangelog.com/es/1.1.0/), versionado
 
 ## [2.1.0] - 2026-10-18
 
-Ajustes del asistente de opciones, salidos de usarlo contra providers reales, y una
-ficha para consultar la configuración de un modelo sin abrir el JSON.
+Ajustes del asistente de opciones, salidos de usarlo contra providers reales, una
+ficha para consultar la configuración de un modelo sin abrir el JSON, y el tipo de
+servidor (Ollama o vLLM) con autodetección.
 
 ### Añadido
+
+- `ocm cache type [PROVIDER] [TIPO]`: dice, lista o fija si un proveedor es Ollama o
+  vLLM. Es un dato **de ocm, no de opencode**: solo cambia qué endpoint se escanea
+  (`/api/tags` o `/v1/models`); `opencode.json` sale byte a byte igual con los dos.
+  `auto` lo devuelve a la autodetección.
+- El escaneo detecta el tipo él solo cuando la caché no lo dice, probando los dos
+  endpoints. Y si el tipo guardado no responde, prueba el otro, escanea con él y
+  **corrige el tipo avisando**. Si lo fijaste a mano (`--type` o `ocm cache type`) se
+  respeta: se escanea con el que funciona, pero solo se avisa.
+- Flags `--type ollama|vllm|auto` en `ocm new`, `ocm configure` y `ocm cache update`,
+  y un campo más ("Tipo de servidor") en el asistente de `ocm configure`.
+- La caché anota de dónde salió cada tipo (`type_source`) y por qué endpoint contestó
+  el servidor en el último escaneo (`type_evidence`); `ocm model info` y los listados
+  lo enseñan y avisan cuando el tipo no cuadra con la evidencia.
 
 - `ocm model info [PROVIDER] [MODELO]`: ficha en claro de un modelo —nombre visible,
   dónde está (caché, bloque singular o bloque plural), URL, API key mascada, último
@@ -32,6 +47,10 @@ ficha para consultar la configuración de un modelo sin abrir el JSON.
   y con `?` explica cómo escribir varias de golpe.
 - Cuando un modelo no tiene ninguna opción guardada, el asistente lo avisa arriba del
   todo, para que no se confunda "no hay nada" con "el valor es ese".
+- `ocm new` ya no deja escribir el tipo a mano (era un campo libre y de ahí salían
+  valores imposibles): se detecta, y si hay que elegir se elige entre las dos opciones
+  válidas. Se aceptan alias al escribirlo (`llama.cpp`, `lmstudio`,
+  `openai-compatible` → `vllm`).
 
 ### Corregido
 
@@ -45,6 +64,17 @@ ficha para consultar la configuración de un modelo sin abrir el JSON.
   perdía todos sus modelos al detectarlos y al migrarlos con `ocm config
   to-singular`; ahora se indexan por `modelID`/`id` y se traducen igual, avisando
   del apaño.
+- Un tipo de proveedor que no fuera literalmente `ollama` o `vllm` (`llama.cpp`,
+  `lmstudio`, lo que se escribiera en `ocm new`) hacía que `ocm update` escribiera la URL
+  **sin `/v1`**: opencode llamaba entonces a `http://host:11434/chat/completions` en
+  vez de a `/v1/chat/completions` y las peticiones fallaban. La regla del `/v1` ya no
+  depende del tipo (los dos lo necesitan) y los tipos se normalizan al leerlos.
+- Un servidor que contestaba 200 con HTML (un proxy, un puerto equivocado) hacía
+  reventar el escaneo con un `ValueError` dentro de `response.json()`; ahora cuenta
+  como fallo del escaneo, con su `last_scan_error`, y no borra los modelos de la
+  última pasada buena.
+- El escaneo respetaba el tipo de la caché a ciegas: si estaba mal dicho, nunca se
+  recuperaba. Ahora cae al otro endpoint automáticamente.
 
 ## [2.0.0] - 2026-10-18
 

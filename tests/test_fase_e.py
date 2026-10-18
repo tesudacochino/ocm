@@ -109,10 +109,21 @@ def mole_cache(extra=None):
 
 
 def parchear_escaneo(resultado):
-    """Sustituir el escaneador de vllm por uno que devuelve lo que le digamos."""
-    original = api.ProviderScanner.scan_vllm
-    api.ProviderScanner.scan_vllm = staticmethod(lambda base_url, api_key=None: resultado)
-    return original
+    """Sustituir los dos escaneadores por uno que devuelve lo que le digamos.
+
+    Hacen falta los dos: si solo falla uno, el escaneo prueba el otro endpoint y
+    ahi dependeriamos de que haya o no un servidor real levantado en la maquina.
+    """
+    originales = (api.ProviderScanner.scan_vllm, api.ProviderScanner.scan_ollama)
+    falso = staticmethod(lambda base_url, api_key=None: resultado)
+    api.ProviderScanner.scan_vllm = falso
+    api.ProviderScanner.scan_ollama = falso
+    return originales
+
+
+def desparchear_escaneo(originales):
+    """Devolverse los escaneadores reales."""
+    api.ProviderScanner.scan_vllm, api.ProviderScanner.scan_ollama = originales
 
 
 # ------------------------------------------------------------------ provider caido --
@@ -122,11 +133,11 @@ def scenario_scan_down(home: Path, config: Path):
     write_json(config, vecino_config())
     write_json(home / "provider_cache.json", mole_cache())
 
-    original = parchear_escaneo(ScanResult(False, [], "Connection refused"))
+    originales = parchear_escaneo(ScanResult(False, [], "Connection refused"))
     try:
         salida = run_cap(home, config, "cache", "update", "mole")
     finally:
-        api.ProviderScanner.scan_vllm = original
+        desparchear_escaneo(originales)
 
     cache = read(home / "provider_cache.json")
     mole = cache["providers"]["mole"]

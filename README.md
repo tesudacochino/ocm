@@ -79,6 +79,7 @@ ocm rename mole                    # Cambiar el nombre visible del provider
 | `ocm cache update` | Escanear **todos** los providers y actualizar caché |
 | `ocm cache update <nombre>` | Escanear un provider específico |
 | `ocm cache list` | Listar providers en caché |
+| `ocm cache type [nombre] [tipo]` | Ver o fijar si es Ollama o vLLM (solo afecta al escaneo) |
 | `ocm cache rm <nombre>` | Eliminar provider de caché |
 | `ocm cache clear` | Borrar toda la caché |
 
@@ -157,6 +158,35 @@ ocm model rm mole modelo-viejo
 |----------|----------------|----------|
 | **Ollama** | `http://127.0.0.1:11434` | `GET /api/tags` |
 | **vLLM** | `http://127.0.0.1:8000` | `GET /v1/models` |
+| **SGLang, llama.cpp, LM Studio** | el que sea | `GET /v1/models` |
+
+### Ollama o vLLM: qué hace el tipo
+
+ocm guarda en la caché un tipo, `ollama` o `vllm`, que **solo decide qué endpoint se
+escanea**. No llega a opencode: lo que opencode lee (`npm`, `options.baseURL` y los
+modelos) sale byte a byte igual con los dos tipos, porque ambos sirven la API de
+OpenAI bajo `/v1`.
+
+- El puerto no distingue (Ollama y vLLM conviven en el 11434), así que se mira qué
+  responde: si existe `GET /api/tags` es Ollama; si no, `GET /v1/models` y vale como
+  vLLM o compatible con OpenAI.
+- Si el tipo guardado falla al escanear, ocm prueba el otro endpoint, escanea con él
+  y **corrige el tipo en la caché avisando**. Si lo fijaste tú a mano, escanea con el
+  que funciona pero lo deja como lo dejaste.
+- Se aceptan alias al escribirlo: `llama.cpp`, `lmstudio`, `openai-compatible` → `vllm`.
+
+| Quiero | Comando |
+|--------|---------|
+| Ver el tipo de todos los providers | `ocm cache type` |
+| Ver el de uno y cambiarlo en un menú | `ocm cache type <proveedor>` |
+| Fijarlo | `ocm cache type <proveedor> ollama` (o `vllm`) |
+| Devolverlo a la autodetección | `ocm cache type <proveedor> auto` |
+| Forzar el endpoint de un escaneo | `ocm cache update <proveedor> --type vllm` |
+| Ponerlo al crear o reconfigurar | `ocm new` / `ocm configure <p> --type ollama` |
+
+`ocm model info <proveedor> <modelo>` enseña además de dónde salió el tipo (detectado
+o fijado a mano) y por qué endpoint contestó el servidor en el último escaneo; si el
+tipo no cuadra con esa evidencia, lo avisa.
 
 ## Formato de opencode.json
 

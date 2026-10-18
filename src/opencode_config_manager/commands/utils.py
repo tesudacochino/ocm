@@ -37,34 +37,113 @@ OPTION_FIELDS = ("apiKey", "baseURL", "headers", "timeout", "headerTimeout",
 # Alias de nombre que resuelven a un tipo de provider
 TYPE_ALIASES = {
     "ollama": "ollama",
+    "ollama-cli": "ollama",
     "vllm": "vllm",
+    "v-llm": "vllm",
     "llama.cpp": "vllm",
     "llamacpp": "vllm",
     "llama-server": "vllm",
     "lmstudio": "vllm",
     "lm-studio": "vllm",
+    "openai": "vllm",
     "openai-compatible": "vllm",
 }
+
+# Los dos unicos tipos que guarda ocm en la caché
+TIPOS = ("ollama", "vllm")
+
+# Como se enseña cada tipo al usuario
+TIPOS_ETIQUETA = {
+    "ollama": "Ollama  (escanea /api/tags)",
+    "vllm": "vLLM o compatible con OpenAI  (escanea /v1/models)",
+}
+
+# De donde salio el tipo que esta en la caché
+ETIQUETA_FUENTE = {"manual": "fijado a mano", "auto": "detectado"}
+
+# El endpoint con el que se reconoce cada tipo
+ENDPOINT_TIPO = {"ollama": "/api/tags", "vllm": "/v1/models"}
+
+# Y su contrario, para el reintento automatico del escaneo
+OTRO_TIPO = {"ollama": "vllm", "vllm": "ollama"}
+
+
+def normalizar_tipo(valor) -> str | None:
+    """'llama.cpp' -> 'vllm', ' Ollama ' -> 'ollama', lo que no se conoce -> None."""
+    if not valor:
+        return None
+    return TYPE_ALIASES.get(str(valor).strip().lower())
+
+
+def url_para_config(base_url: str) -> str:
+    """La URL que va en options.baseURL de opencode.json.
+
+    ollama y vLLM sirven la API de OpenAI bajo /v1, asi que la regla no depende del
+    tipo: se anade /v1 cuando el servidor esta en la raiz de la URL. Si alguien pone
+    una URL con su propio camino (http://host/proxy) se respeta tal cual.
+    """
+    url = (base_url or "").rstrip("/")
+    if not url:
+        return url
+    sin_protocolo, _, resto = url.partition("://")
+    camino = resto.partition("/")[2] if resto else ""
+    if camino in ("", "/"):
+        return url + "/v1"
+    if url.endswith("/v1"):
+        return url
+    return url
 
 
 def get_provider_type(provider_name: str, manager: ConfigManager = None) -> str:
     """Obtener el tipo de provider desde la caché o por convención de nombre.
 
     Prioridad:
-    1. Campo 'provider_type' en la caché del provider
+    1. Campo 'provider_type' en la caché del provider, pasado por alias
     2. Alias conocido por nombre ('ollama', 'vllm', 'llama.cpp', ...)
-    3. Fallback: 'ollama'
+    3. Fallback: 'vllm' (compatible con OpenAI), que es lo que ocm escribe siempre
     """
     if manager and manager.cache_data:
         cache_info = manager.cache_data.get("providers", {}).get(provider_name, {})
-        cached_type = cache_info.get("provider_type")
-        if cached_type:
-            return cached_type
+        tipo = normalizar_tipo(cache_info.get("provider_type"))
+        if tipo:
+            return tipo
 
-    if provider_name in TYPE_ALIASES:
-        return TYPE_ALIASES[provider_name]
+    tipo = normalizar_tipo(provider_name)
+    if tipo:
+        return tipo
 
-    return "ollama"
+    return "vllm"
+
+
+def tipo_guardado(provider_name: str, cache_info: dict,
+                  manager: ConfigManager = None) -> str:
+    """El tipo que dice la caché (o, si no, opencode.json), pasado por alias.
+
+    Devuelve 'ollama', 'vllm' o None cuando no se sabe.
+    """
+    tipo = normalizar_tipo((cache_info or {}).get("provider_type"))
+    if not tipo and manager is not None:
+        configured = provider_entry_from_config(manager, provider_name)
+        tipo = normalizar_tipo(configured.get("provider_type") or configured.get("type"))
+    return tipo
+
+
+def estado_tipo(provider_name: str, cache_info: dict,
+                manager: ConfigManager = None) -> dict:
+    """Como esta el tipo de un provider: {'tipo', 'fuente', 'evidencia'}.
+
+    'fuente' es 'manual' si alguien lo fijo (configure/cache type/--type), 'auto'
+    si lo decidio un escaneo, y None si nunca se pose. 'evidencia' guarda el
+    endpoint por el que contesto el servidor en el ultimo escaneo.
+    """
+    fuente = (cache_info or {}).get("type_source")
+    if fuente not in ("manual", "auto"):
+        fuente = None
+    return {
+        "tipo": tipo_guardado(provider_name, cache_info, manager),
+        "fuente": fuente,
+        "evidencia": (cache_info or {}).get("type_evidence"),
+    }
 
 
 def provider_entry_from_config(manager: ConfigManager, provider_name: str) -> dict:
@@ -160,25 +239,28 @@ def create_backup(config_path: Path, **_) -> str:
         return None
 
 
-def build_provider_config(provider_name: str, cache_info: dict, provider_type: str = None) -> dict:
+def build_provider_config(provider_name: str, cache_info: dict,
+                          provider_type: str = None) -> dict:
     """Configuración "deseada" de un provider según la caché.
 
     Es lo que ocm quiere escribir; se combina con lo existente mediante
     `merge_provider_config`, no se asigna directamente.
 
+    `provider_type` se acepta por compatibilidad pero **ya no influye**: lo que ve
+    opencode (npm + baseURL + modelos) es igual para Ollama y para vLLM, porque los
+    dos atienden la API de OpenAI bajo /v1. El tipo solo decide que endpoint escanea
+    ocm, y eso se resuelve en commands/scan.py.
+
     Returns:
         {"name": ..., "options": {...}, "models": {...}}
     """
-    provider_type = provider_type or get_provider_type(provider_name, None)
-
     config = {
         "npm": cache_info.get("npm") or DEFAULT_NPM,
         "name": cache_info.get("name") or provider_name,
     }
 
-    config_url = cache_info.get("baseUrl") or "http://localhost:11434"
-    if provider_type in ("ollama", "vllm") and not config_url.endswith("/v1"):
-        config_url = config_url.rstrip("/") + "/v1"
+    # La URL no depende del tipo: ollama y vLLM atienden la API de OpenAI bajo /v1
+    config_url = url_para_config(cache_info.get("baseUrl") or "http://localhost:11434")
 
     options = {"baseURL": config_url}
     if cache_info.get("apiKey"):

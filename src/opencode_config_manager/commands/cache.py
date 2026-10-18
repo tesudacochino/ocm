@@ -4,8 +4,107 @@ Comandos de gestión de caché (provider_cache.json).
 
 from datetime import datetime
 
-from ..config import ConfigManager, ConfigUI
+from ..config import Colors, ConfigManager, ConfigUI
 from .provider import print_provider_cache_info
+from .utils import (
+    ETIQUETA_FUENTE,
+    TIPOS_ETIQUETA,
+    estado_tipo,
+    normalizar_tipo,
+)
+
+
+def _linea_tipo(estado: dict) -> str:
+    """'vllm  (fijado a mano · /v1/models)' para las listas de providers."""
+    notas = []
+    if estado["fuente"]:
+        notas.append(ETIQUETA_FUENTE[estado["fuente"]])
+    if estado["evidencia"]:
+        notas.append(estado["evidencia"])
+    texto = estado["tipo"] or Colors.YELLOW + "sin definir" + Colors.RESET
+    return texto + (f"  ({' · '.join(notas)})" if notas else "")
+
+
+def cmd_cache_type(manager: ConfigManager, args):
+    """`ocm cache type [PROVIDER] [TIPO]`: decir si un provider es Ollama o vLLM.
+
+    Es un dato de ocm, no de opencode: solo cambia que endpoint se escanea
+    (/api/tags o /v1/models). Lo que opencode lee —npm, baseURL y modelos— sale
+    igual con los dos tipos, porque ambos sirven la API de OpenAI bajo /v1.
+    """
+    manager.load_cache()
+
+    proveedor = getattr(args, "provider", None)
+    pedido = getattr(args, "tipo", None)
+
+    if not proveedor:
+        proveedores = manager.cache_data.get("providers", {})
+        if not proveedores:
+            print("No hay providers en la caché. Ejecuta: ocm new")
+            return
+        ConfigUI.print_header("Tipo de cada provider (solo afecta al escaneo de ocm)")
+        for nombre in proveedores:
+            estado = estado_tipo(nombre, proveedores[nombre], manager)
+            url = proveedores[nombre].get("baseUrl", "N/A")
+            print(f"  {nombre:<20} {url:<38} {_linea_tipo(estado)}")
+        print("\nPara cambiarlo: " + Colors.CYAN + "ocm cache type <PROVIDER> <ollama|vllm|auto>"
+              + Colors.RESET)
+        return
+
+    cache_info = manager.cache_data.get("providers", {}).get(proveedor)
+    if cache_info is None:
+        ConfigUI.print_error(f"Provider '{proveedor}' no encontrado en la caché.")
+        print("Ejecuta: ocm cache list")
+        return
+
+    estado = estado_tipo(proveedor, cache_info, manager)
+
+    if not pedido:
+        ConfigUI.print_header(f"Tipo de {proveedor}")
+        print(f"  URL base : {cache_info.get('baseUrl', 'N/A')}")
+        print(f"  Tipo     : {_linea_tipo(estado)}")
+        etiquetas = [TIPOS_ETIQUETA["vllm"], TIPOS_ETIQUETA["ollama"],
+                     "No lo se: detectarlo al escanear"]
+        if estado["tipo"] in ("vllm", "ollama"):
+            por_defecto = etiquetas[0] if estado["tipo"] == "vllm" else etiquetas[1]
+        else:
+            por_defecto = etiquetas[2]
+        elegida = ConfigUI.ask_choice("Dejarlo en", etiquetas, default=por_defecto)
+        pedido = "vllm" if elegida == etiquetas[0] else (
+            "ollama" if elegida == etiquetas[1] else "auto")
+
+    texto = str(pedido).strip().lower()
+    if texto == "auto":
+        nuevo_tipo = None
+        fuente = None
+        ConfigUI.print_info("Ocm lo detectara solo en el proximo escaneo.")
+    else:
+        nuevo_tipo = normalizar_tipo(texto)
+        if not nuevo_tipo:
+            ConfigUI.print_error(f"Tipo '{pedido}' desconocido; vale 'ollama', 'vllm' o 'auto'.")
+            return
+        fuente = "manual"
+
+    if nuevo_tipo == estado["tipo"] and fuente == estado["fuente"]:
+        ConfigUI.print_info(f"'{proveedor}' ya tenia el tipo {nuevo_tipo or 'auto'}.")
+        return
+
+    if nuevo_tipo:
+        cache_info["provider_type"] = nuevo_tipo
+        cache_info["type_source"] = fuente
+    else:
+        cache_info.pop("provider_type", None)
+        cache_info.pop("type_source", None)
+    # La evidencia es de un escaneo; al cambiar el tipo a mano deja de valer
+    cache_info.pop("type_evidence", None)
+
+    manager.save_cache(touch=False)
+    etiqueta = nuevo_tipo or "auto-deteccion"
+    if not fuente:
+        etiqueta += " (se detectara al escanear)"
+    ConfigUI.print_success(f"{proveedor}: tipo {etiqueta}")
+    print("Aplicalo al escaneo con: " + Colors.CYAN + f"ocm cache update {proveedor}"
+          + Colors.RESET)
 
 
 def cmd_cache_list(manager: ConfigManager, args):

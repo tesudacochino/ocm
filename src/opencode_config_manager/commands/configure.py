@@ -28,10 +28,16 @@ from .options import (
 from .scan import scan_single_provider
 from .utils import (
     API_STYLES,
+    ETIQUETA_FUENTE,
+    TIPOS_ETIQUETA,
     create_backup,
+    estado_tipo,
     get_provider_type,
+    normalizar_tipo,
     provider_entry_from_config,
     refresh_cache_from_config,
+    tipo_guardado,
+    url_para_config,
 )
 
 
@@ -44,16 +50,14 @@ def mask_secret(secret: str) -> str:
     return f"{secret[:4]}{'*' * 6}{secret[-4:]}"
 
 
-def _config_url(base_url: str, provider_type: str) -> str:
+def _config_url(base_url: str, provider_type: str = None) -> str:
     """URL que va en `options.baseURL` de opencode.json.
 
     Misma convencion que `build_provider_config`: la caché guarda el host pelado
-    y en el config lleva el sufijo /v1.
+    y en el config lleva el sufijo /v1. `provider_type` se ignora a proposito: los
+    dos tipos sirveen la API de OpenAI bajo /v1, asi que la URL no cambia segun cual.
     """
-    url = (base_url or "").rstrip("/")
-    if provider_type in ("ollama", "vllm") and not url.endswith("/v1"):
-        url = url + "/v1"
-    return url
+    return url_para_config(base_url or "")
 
 
 def ask_optional(label: str, current: str = "", hint: str = "", secret: bool = False):
@@ -152,7 +156,8 @@ def apply_provider_fields(manager: ConfigManager, provider: str, cache_info: dic
     return writes
 
 
-def _print_current(provider: str, cache_info: dict, entry: dict) -> None:
+def _print_current(provider: str, cache_info: dict, entry: dict,
+                   manager: ConfigManager = None) -> None:
     """Mostrar como esta configurado el provider ahora mismo."""
     options = entry.get("options") if isinstance(entry.get("options"), dict) else {}
     key = cache_info.get("apiKey") or options.get("apiKey")
@@ -161,13 +166,58 @@ def _print_current(provider: str, cache_info: dict, entry: dict) -> None:
     print(f"  URL base       : {cache_info.get('baseUrl') or options.get('baseURL') or 'N/A'}")
     print(f"  API key        : {mask_secret(key) or 'no'}")
     print(f"  SDK (npm)      : {cache_info.get('npm') or entry.get('npm') or 'N/A'}")
-    print(f"  Tipo detectado : {cache_info.get('provider_type') or 'N/A'}")
+    estado = estado_tipo(provider, cache_info, manager)
+    notas = []
+    if estado["fuente"]:
+        notas.append(ETIQUETA_FUENTE[estado["fuente"]])
+    if estado["evidencia"]:
+        notas.append(f"ultimo escaneo por {estado['evidencia']}")
+    detalle = f"  ({' · '.join(notas)})" if notas else ""
+    tipo_txt = estado["tipo"] or (Colors.YELLOW + "sin definir" + Colors.RESET)
+    print(f"  Tipo           : {tipo_txt}{detalle}")
     if cache_info.get("reachable") is False:
         print(f"  {Colors.YELLOW}No accesible en el ultimo escaneo: "
               f"{cache_info.get('last_scan_error', '')}{Colors.RESET}")
 
 
-def _ask_fields(provider: str, cache_info: dict, entry: dict, overrides: dict) -> dict:
+def _ask_tipo(provider: str, cache_info: dict, manager: ConfigManager,
+              overrides: dict) -> dict:
+    """Preguntar (o tomar del flag) si el servidor es Ollama o vLLM.
+
+    Es un dato de ocm, no de opencode: solo cambia que endpoint se escanea.
+    """
+    if "type" in overrides:
+        texto = str(overrides["type"]).strip().lower()
+        if texto == "auto":
+            return {"provider_type": None, "type_source": None}
+        canonico = normalizar_tipo(texto)
+        if canonico:
+            return {"provider_type": canonico, "type_source": "manual"}
+        ConfigUI.print_error(f"Tipo '{overrides['type']}' desconocido; "
+                             "vale 'ollama', 'vllm' o 'auto'.")
+        return {}
+
+    actual = tipo_guardado(provider, cache_info, manager)
+    etiquetas = [TIPOS_ETIQUETA["vllm"], TIPOS_ETIQUETA["ollama"],
+                 "No lo se: detectarlo al escanear"]
+    if actual in ("vllm", "ollama"):
+        por_defecto = etiquetas[0] if actual == "vllm" else etiquetas[1]
+    else:
+        por_defecto = etiquetas[2]
+
+    elegida = ConfigUI.ask_choice(
+        "Tipo de servidor  (no cambia opencode.json; solo que endpoint escanea ocm)",
+        etiquetas, default=por_defecto)
+    if elegida == por_defecto:
+        return {}
+    if elegida == etiquetas[2]:
+        return {"provider_type": None, "type_source": None}
+    return {"provider_type": "vllm" if elegida == etiquetas[0] else "ollama",
+            "type_source": "manual"}
+
+
+def _ask_fields(provider: str, cache_info: dict, entry: dict, overrides: dict,
+                manager: ConfigManager = None) -> dict:
     """Preguntar los campos del provider, uno a uno, salvo los fijados por flag."""
     options = entry.get("options") if isinstance(entry.get("options"), dict) else {}
     fields = {}
@@ -202,6 +252,10 @@ def _ask_fields(provider: str, cache_info: dict, entry: dict, overrides: dict) -
                              "Intro mantiene la guardada", secret=True)
         if value is not KEEP:
             fields["apiKey"] = value
+
+    if manager is not None:
+        for key, value in _ask_tipo(provider, cache_info, manager, overrides).items():
+            fields[key] = value
 
     return fields
 
@@ -363,17 +417,18 @@ def cmd_configure(manager: ConfigManager, args):
 
     entry = provider_entry_from_config(manager, provider)
     ConfigUI.print_header(f"Reconfigurar provider: {provider}")
-    _print_current(provider, cache_info, entry)
+    _print_current(provider, cache_info, entry, manager)
 
     overrides = {}
-    for flag, key in (("name", "name"), ("url", "url"), ("api_key", "api_key")):
+    for flag, key in (("name", "name"), ("url", "url"), ("api_key", "api_key"),
+                      ("type", "type")):
         value = getattr(args, flag, None)
         if value:
             overrides[key] = value
 
     provider_type = cache_info.get("provider_type") or get_provider_type(provider, manager)
 
-    fields = _ask_fields(provider, cache_info, entry, overrides)
+    fields = _ask_fields(provider, cache_info, entry, overrides, manager)
     if not getattr(args, "no_api_style", False):
         for key, value in ask_api_style_fields(cache_info, provider_type).items():
             fields.setdefault(key, value)
@@ -392,7 +447,7 @@ def cmd_configure(manager: ConfigManager, args):
 
     if not getattr(args, "no_rescan", False):
         if _ask_rescan(manager, provider, cache_info,
-                       "baseUrl" in fields or "apiKey" in fields):
+                       "baseUrl" in fields or "apiKey" in fields or "provider_type" in fields):
             provider_type = cache_info.get("provider_type") or provider_type
 
     changes += _ask_models(manager, provider, cache_info,
