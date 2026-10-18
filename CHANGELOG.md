@@ -8,7 +8,9 @@ Formato [Keep a Changelog](https://keepachangelog.com/es/1.1.0/), versionado
 Ajustes del asistente de opciones, salidos de usarlo contra providers reales, una
 ficha para consultar la configuración de un modelo sin abrir el JSON, el tipo de
 servidor (Ollama o vLLM) con autodetección, y `ocm model detect`, que le pregunta al
-servidor las opciones de cada modelo en vez de hacer que las escribas a mano.
+servidor las opciones de cada modelo en vez de hacer que las escribas a mano. Dos
+flujos rematan la idea: registrar un provider y que se rellene solo, y enterarse si un
+día cambia el motor de inferencia que hay detrás.
 
 ### Añadido
 
@@ -39,6 +41,22 @@ servidor las opciones de cada modelo en vez de hacer que las escribas a mano.
   rellena huecos), `--force` (cambiar también lo que ya tenías puesto), `--all` (sin
   menú de selección), `--probar` (mandar una imagen 1x1 y leer si la acepta),
   `--no-registro` (fiarse sólo del servidor) y `--json`.
+- `ocm new` rellena las opciones **él solo**: terminado el escaneo, consulta al
+  servidor y al registro igual que `ocm model detect`, enseña la propuesta completa y
+  hace una sola pregunta (*¿Guardar lo detectado en la caché?*). Con un no no se
+  escribe nada, y si el servidor no suelta prenda no se gasta ni una pregunta de más.
+  `--no-detectar` se salta el paso y deja el asistente campo a campo de siempre.
+- `ocm configure` hace lo mismo, pero sólo con los modelos que **aún no tienen
+  opciones** (y a los que nunca se les preguntó): no repasa por detrás lo que ya
+  dejaste puesto. También se salta con `--no-detectar`.
+- Cada escaneo apunta qué motor de inferencia hay detrás del provider (ollama,
+  llama.cpp, vLLM, SGLang, LM Studio) y de dónde lo ha sacado; si en el siguiente
+  escaneo responde otro, avisa (*«Ojo, el motor parece otro: en la caché constaba
+  'ollama' y ahora responde como 'vllm'»*) y `ocm model info` lo recuerda hasta que se
+  confirme dos veces. El puerto no distingue —ollama y llama-server comparten el
+  11434—, así que se miran `owned_by`, `details.format`, el `model_path` de `/props` y
+  la forma de `/api/tags`; si ningún modelo deja pista, no se dice nada. Es un dato de
+  la caché: opencode no lo lee.
 
 - `ocm model info [PROVIDER] [MODELO]`: ficha en claro de un modelo —nombre visible,
   dónde está (caché, bloque singular o bloque plural), URL, API key mascada, último

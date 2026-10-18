@@ -38,6 +38,7 @@ opencodeconfig/
 │       ├── cache.py           # cache show/clear/type
 │       ├── detect.py          # ocm model detect: preguntar al servidor y proponer
 │       └── debug.py           # debug config, validate_config
+├── tests/                      # Regresiones: test_fase_a..h.py (scripts sueltos) + entorno.py
 ├── scripts/
 │   ├── ccl                    # Wrapper Linux/macOS
 │   └── ccl.bat                # Wrapper Windows
@@ -83,6 +84,11 @@ servidor en el ultimo escaneo). Reglas en `scan_single_provider`:
 - los dos fallan → `reachable=False` + `last_scan_error`, sin tocar modelos ni tipo
 - `normalizar_tipo()` (en `utils.py`) pasa alias como `llama.cpp` o `lmstudio` a
   `vllm`; `estado_tipo()` y `tipo_guardado()` dan el estado para fichas y asistentes
+- `anotar_motor()` (en `scan.py`) apunta en la cache `servidor`, `servidor_evidencia` y
+  `servidor_desde` con `motor_de()`; lo llaman `scan_single_provider` y
+  `cmd_provider_new`. Solo informativo: no viaja a `opencode.json`. Si el motor cambia
+  se avisa y se deja `servidor_anterior`; el siguiente escaneo que lo confirme lo quita,
+  para que la nota no se quede abierta para siempre
 
 **`cache_models.py`** - Datos de la caché por modelo:
 - `models` en la caché es un dict `{model_id: {name, limit, modalities, ...}}`
@@ -152,8 +158,13 @@ servidor en el ultimo escaneo). Reglas en `scan_single_provider`:
   `~/.cache/opencode/models.json`) → `_desde_nombre`, que marca lo suyo como
   `suposicion`. El `name`, el `status` y lo experimental **jamás** salen del registro,
   y el video nunca se adivina
-- `_servidor_de()` deduce llama.cpp/ollama/vllm/sglang para saber que endpoints tiene
-  sentido preguntar; `probar_vision()` (solo con `--probar`) manda un PNG 1x1 y lee el
+- `_servidor_de()` / `_marca_motor()`: con las pistas de los JSON (`MARCAS_MOTOR`:
+  `owned_by`, `details`, `root`, `parent`, `model_path`) deducen llama.cpp / ollama /
+  vllm / sglang / lmstudio **y la prueba concreta** de donde sale; sin pista, dicen
+  `None` (no se inventa). `motor_de()` hace mayoria sobre los modelos y es lo que se
+  guarda en la cache (`servidor`, `servidor_evidencia`, `servidor_desde` y
+  `servidor_anterior` cuando ha cambiado). Nada de eso llega a `opencode.json`
+- `probar_vision()` (solo con `--probar`) manda un PNG 1x1 y lee el
   rechazo, y solo se gasta si nada antes decidio la modalidad
 - `detectar_opciones()` devuelve el `Deteccion`. La procedencia se guarda en la cache
   bajo `CLAVE_FUENTES` (`opciones_fuente`) y `CLAVE_DETECTADO`
@@ -171,10 +182,21 @@ servidor en el ultimo escaneo). Reglas en `scan_single_provider`:
 - `--all` se salta el menu de seleccion, `--json` vuelca para scripts (y calla los
   avisos), `--no-registro` deja solo lo del servidor, `--probar` activa la prueba
   comportamental
+- `consultar_modelos()` es el nucleo que comparten el comando y los asistentes: pide
+  las entradas crudas, corre `detectar_opciones()` por modelo, pinta el cuadro y
+  devuelve `(trabajos, totales)`; aqui solo se mira, escribe `aplicar_propuesta()`
+  (que llama a `aplicar_filas()` por modelo)
+- `proponer_en_asistente()` es lo que llaman `ocm new` y `ocm configure`: enseña la
+  propuesta, hace **una** pregunta ("¿Guardar lo detectado en la cache?") y devuelve
+  lo que ha escrito. Si no se ha averiguado nada no gasta ni la pregunta
+- `merece_deteccion()` decide quien pasa por ahi en `ocm configure`: los modelos sin
+  ninguna opcion y a los que nunca se les pregunto (`opciones_detectado_en`); por eso
+  el asistente no repasa por detras lo que ya estaba puesto
 
 **`commands/configure.py`** - `ocm configure`, el asistente de provider:
 - `cmd_configure()`: estado actual → campos del provider → estilo de API → escaneo
-  opcional → repasar modelos → poda opcional
+  opcional → autodeteccion de los modelos que aun no tienen opciones (`--no-detectar`
+  lo salta) → repasar modelos → poda opcional
 - `ask_optional()` / `mask_secret()`: Intro = KEEP, `-` = None, la api key se
   pinta enmascarada (`sk-1******3456`)
 - `apply_provider_fields(manager, provider, cache_info, fields, backup_done)`:
@@ -343,6 +365,8 @@ uv run opencode-config-manager --help
       "last_scan": 1711900800,
       "baseUrl": "http://127.0.0.1:11434",
       "provider_type": "ollama",
+      "servidor": "llama.cpp",
+      "servidor_evidencia": "GET /props (modalities)",
       "apiKey": "sk-...",
       "reachable": true
     }
@@ -353,6 +377,11 @@ uv run opencode-config-manager --help
 - `models` en lista (formato v1) se migra solo al abrir la caché.
 - `uid`: identidad estable del provider, no depende del nombre.
 - `reachable`: `false` cuando el último escaneo no pudo hablar con la URL.
+- `servidor` / `servidor_evidencia` / `servidor_desde` (y `servidor_anterior` mientras
+  hay un cambio sin confirmar): que motor de inferencia hay detras, de donde se saco y
+  cuando. Son de ocm; `provider_type` solo decide que endpoint se escanea.
+- En `models.<id>`, `opciones_fuente` y `opciones_detectado_en` guardan la procedencia
+  de lo autodetectado. Son cache-only: `serialize_model()` las filtra.
 - Lo que hay en `models.<id>` se copia a `provider.<id>.models.<id>` en opencode.json.
 
 ### Reglas de escritura en opencode.json

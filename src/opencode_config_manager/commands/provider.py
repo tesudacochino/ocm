@@ -9,9 +9,13 @@ from ..config import ConfigManager, ConfigUI, Colors
 from ..api import ProviderScanner
 from ..cache_models import ensure_uid, normalize_models
 from ..model_fields import describe_model
+from ..deteccion import (CLAVE_MOTOR, CLAVE_MOTOR_ANTERIOR,
+                         CLAVE_MOTOR_EVIDENCIA)
 from .configure import ask_api_style_fields
 from .encoded import print_encoded_notice
 from .options import configure_model_entry
+from .detect import proponer_en_asistente
+from .scan import anotar_motor
 from .utils import (
     ENDPOINT_TIPO,
     ETIQUETA_FUENTE,
@@ -79,6 +83,16 @@ def print_provider_cache_info(provider_name: str, cache_info: dict):
     if cache_info.get("type_evidence"):
         notas.append("último escaneo por " + cache_info["type_evidence"])
     print(f"  Tipo: {tipo}" + (f"  ({' · '.join(notas)})" if notas else ""))
+    motor = cache_info.get(CLAVE_MOTOR)
+    if motor:
+        notas = []
+        if cache_info.get(CLAVE_MOTOR_EVIDENCIA):
+            notas.append(cache_info[CLAVE_MOTOR_EVIDENCIA])
+        anterior = cache_info.get(CLAVE_MOTOR_ANTERIOR)
+        if anterior and anterior != motor:
+            notas.append(Colors.BRIGHT_YELLOW + f"ojo, antes constaba '{anterior}'"
+                         + Colors.RESET)
+        print(f"  Motor: {motor}" + (f"  ({' · '.join(notas)})" if notas else ""))
     if cache_info.get("apiKey"):
         print("  API Key: guardada")
     if cache_info.get("reachable") is False:
@@ -128,21 +142,35 @@ def personalize_model_names(cache_entry: dict, model_ids: list, personalize=None
     return cache_entry
 
 
-def configure_model_options_step(cache_entry: dict, model_ids: list) -> dict:
-    """Pasar el asistente de opciones por cada modelo (contexto, modalidades, ...).
+def configure_model_options_step(cache_entry: dict, model_ids: list,
+                                base_url: str = None, api_key: str = None,
+                                provider: str = "", detectar: bool = True) -> dict:
+    """Rellenar las opciones de cada modelo: primero lo que sepa el servidor, luego a mano.
 
-    Es opcional: quien no quiera, simplemente pulsa 'n' y el provider queda con
-    los nombres, que es lo minimo que necesita opencode.
+    Se consulta al servidor como hace `ocm model detect`, se enseña la propuesta y se
+    pide una sola confirmacion. Lo que quede sin decidir, o lo que el usuario quiera
+    revisar, pasa luego por el asistente campo a campo. Con `detectar=False` se salta
+    la consulta y queda solo el asistente.
     """
     if not model_ids:
         return cache_entry
 
     models = normalize_models(cache_entry.get("models"))
+    if base_url is None:
+        base_url = cache_entry.get("baseUrl")
+    if api_key is None:
+        api_key = cache_entry.get("apiKey")
+
+    escritos = 0
+    if detectar:
+        escritos = proponer_en_asistente(base_url, api_key, models, model_ids,
+                                       provider=provider)
 
     if not ConfigUI.ask_yes_no(
-            "¿Configurar ahora las opciones de cada modelo (contexto, vision, herramientas)?",
+            "¿Repasar alguna a mano (contexto, vision, herramientas)?",
             default="n"):
-        ConfigUI.print_info("Puedes hacerlo luego con: ocm model options")
+        if not escritos:
+            ConfigUI.print_info("Puedes hacerlo luego con: ocm model options")
         cache_entry["models"] = models
         return cache_entry
 
@@ -271,6 +299,7 @@ def cmd_provider_new(manager: ConfigManager, args):
     models = []
     evidencia = None
     fuente = None
+    entradas = {}          # los JSON crudos del servidor, para detectar opciones
 
     if pedido:
         print(f"\nEscaneando {base_url} como {pedido}...")
@@ -281,6 +310,7 @@ def cmd_provider_new(manager: ConfigManager, args):
         provider_type, fuente = pedido, "manual"
         if resultado.success:
             models, evidencia = resultado.models, ENDPOINT_TIPO[pedido]
+            entradas = resultado.entradas or {}
         else:
             ConfigUI.print_error(f"No responde por {ENDPOINT_TIPO[pedido]}: {resultado.error}")
             prueba = ProviderScanner.probe(base_url, api_key or None)
@@ -290,10 +320,12 @@ def cmd_provider_new(manager: ConfigManager, args):
                     f"porque lo fijaste. Para seguir al servidor: "
                     f"ocm cache type {provider_name} auto")
                 models, evidencia = prueba.models, prueba.endpoint
+                entradas = prueba.entradas or {}
     else:
         print("\nDetectando tipo de provider...")
         prueba = ProviderScanner.probe(base_url, api_key or None)
         provider_type, models, evidencia = prueba.tipo, prueba.models, prueba.endpoint
+        entradas = prueba.entradas or {}
         fuente = "auto" if provider_type else None
 
     if not provider_type:
@@ -343,9 +375,14 @@ def cmd_provider_new(manager: ConfigManager, args):
     else:
         cache_entry.pop("apiKey", None)
     cache_entry.pop("last_scan_error", None)
+    # Se apunta ya el motor que se ha visto, para que el primer 'cache update' tenga
+    # con que comparar y poder avisar si un dia cambia lo que hay detras del provider.
+    anotar_motor(cache_entry, entradas, base_url, api_key or None)
     personalize_model_names(cache_entry, models)
     ask_api_style(manager, provider_name, cache_entry, provider_type, previous)
-    configure_model_options_step(cache_entry, models)
+    configure_model_options_step(cache_entry, models, base_url, api_key or None,
+                                 provider_name,
+                                 detectar=not getattr(args, "no_detectar", False))
     ensure_uid(cache_entry)
 
     manager.cache_data["providers"][provider_name] = cache_entry

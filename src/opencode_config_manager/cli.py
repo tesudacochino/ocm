@@ -99,6 +99,9 @@ Flujo típico:
     new_parser.add_argument("--type",
                             help="Tipo de servidor: 'ollama', 'vllm' o 'auto' (por defecto auto). "
                                  "Solo cambia que endpoint escanea ocm; opencode lee lo mismo")
+    new_parser.add_argument("--no-detectar", action="store_true",
+                            help="No preguntar al servidor las opciones de los modelos "
+                                 "(solo el asistente campo a campo)")
     subparsers.add_parser("list", aliases=["ls"], help="Listar providers configurados")
 
     rm_parser = subparsers.add_parser("remove", aliases=["rm"], help="Eliminar un provider")
@@ -196,6 +199,8 @@ Flujo típico:
                                   help="No preguntar el estilo de API (npm)")
     configure_parser.add_argument("--no-rescan", action="store_true",
                                   help="No ofrecer un escaneo tras cambiar URL o api key")
+    configure_parser.add_argument("--no-detectar", action="store_true",
+                                  help="No preguntar al servidor las opciones de los modelos")
     configure_parser.add_argument("--no-prune", action="store_true",
                                   help="No ofrecer quitar los modelos que ya no existen")
 

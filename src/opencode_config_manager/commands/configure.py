@@ -17,6 +17,7 @@ import time
 
 from ..config import ConfigManager, ConfigUI, Colors
 from ..cache_models import normalize_models, provider_needs_rescan
+from .detect import merece_deteccion, proponer_en_asistente
 from .model import resolve_provider
 from .options import (
     KEEP,
@@ -449,6 +450,16 @@ def cmd_configure(manager: ConfigManager, args):
         if _ask_rescan(manager, provider, cache_info,
                        "baseUrl" in fields or "apiKey" in fields or "provider_type" in fields):
             provider_type = cache_info.get("provider_type") or provider_type
+
+    # Antes de ponerse a repasar a mano, que el servidor rellene lo que sepa de los
+    # modelos que aun no tienen opciones (y que pregunte si lo guarda).
+    if not getattr(args, "no_detectar", False):
+        models = normalize_models(cache_info.get("models"))
+        candidatos = [mid for mid, entrada in models.items() if merece_deteccion(entrada)]
+        if candidatos:
+            proponer_en_asistente(cache_info.get("baseUrl"), cache_info.get("apiKey"),
+                                 models, candidatos, provider=provider)
+            cache_info["models"] = models
 
     changes += _ask_models(manager, provider, cache_info,
                            bool(getattr(args, "advanced", False)),

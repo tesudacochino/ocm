@@ -11,6 +11,14 @@ from datetime import datetime
 from ..config import ConfigManager, ConfigUI, Colors
 from ..api import ProviderScanner
 from ..cache_models import merge_scanned_models, normalize_models
+from ..deteccion import (
+    CLAVE_MOTOR,
+    CLAVE_MOTOR_ANTERIOR,
+    CLAVE_MOTOR_DESDE,
+    CLAVE_MOTOR_EVIDENCIA,
+    Explorador,
+    motor_de,
+)
 from .utils import (
     ENDPOINT_TIPO,
     ETIQUETA_FUENTE,
@@ -20,15 +28,56 @@ from .utils import (
 )
 
 
-def _escanear_como(base_url: str, api_key: str, tipo: str):
-    """Escanear con un tipo concreto -> (modelos, endpoint_usado, error)."""
+def anotar_motor(cached_info: dict, entradas: dict, base_url: str,
+                 api_key: str = None) -> tuple:
+    """Apuntar en la caché qué motor hay detras del provider, y avisar si cambio.
+
+    Es informativo: opencode no lee nada de aqui. Pero saber si detras del provider
+    hay ollama, llama.cpp, vLLM o SGLang cambia lo que se le puede pedir (vision,
+    tools, contexto), asi que la primera vez se cuenta y cuando se tuerce se avisa.
+
+    `servidor_anterior` es una nota pendiente de revisar: si el escaneo siguiente
+    vuelve a ver el mismo motor, se da por confirmado y se quita.
+    """
+    motor, evidencia = (None, None)
+    if entradas:
+        motor, evidencia = motor_de(entradas)
+        if motor is None:
+            # La lista no dice nada: /props delata a llama-server, una peticion y listo
+            motor, evidencia = motor_de(
+                entradas, Explorador(base_url, api_key).json("/props"))
+
+    anterior = cached_info.get(CLAVE_MOTOR)
+    if motor and anterior and anterior != motor:
+        ConfigUI.print_warning(
+            f"  Ojo, el motor parece otro: en la cache constaba '{anterior}' y ahora "
+            f"responde como '{motor}' ({evidencia}).")
+    elif motor and not anterior:
+        print(f"  Motor: {motor}  ({evidencia})")
+
+    if motor:
+        cached_info[CLAVE_MOTOR] = motor
+        cached_info[CLAVE_MOTOR_EVIDENCIA] = evidencia
+        if anterior and anterior != motor:
+            cached_info[CLAVE_MOTOR_ANTERIOR] = anterior
+            cached_info[CLAVE_MOTOR_DESDE] = int(time.time())
+        elif not anterior:
+            cached_info[CLAVE_MOTOR_DESDE] = int(time.time())
+        elif CLAVE_MOTOR_ANTERIOR in cached_info:
+            cached_info.pop(CLAVE_MOTOR_ANTERIOR)
+            cached_info.pop(CLAVE_MOTOR_DESDE, None)
+    return motor, evidencia
+
+
+def _escanear_como(base_url: str, api_key: str, tipo: str) -> tuple:
+    """Escanear con un tipo concreto -> (modelos, endpoint_usado, error, entradas)."""
     if tipo == "vllm":
         resultado = ProviderScanner.scan_vllm(base_url, api_key)
     else:
         resultado = ProviderScanner.scan_ollama(base_url, api_key)
     if resultado.success:
-        return resultado.models, ENDPOINT_TIPO.get(tipo), None
-    return [], None, resultado.error or "no responde"
+        return resultado.models, ENDPOINT_TIPO.get(tipo), None, (resultado.entradas or {})
+    return [], None, resultado.error or "no responde", {}
 
 
 def scan_single_provider(provider_name: str, cached_info: dict, manager: ConfigManager,
@@ -75,16 +124,18 @@ def scan_single_provider(provider_name: str, cached_info: dict, manager: ConfigM
     print(f"\nEscaneando {provider_name} en {base_url}...")
 
     modelos = []
+    entradas = {}
     endpoint = None
     tipo_usado = pedido or (None if forzar else guardado)
 
     if tipo_usado:
-        modelos, endpoint, error = _escanear_como(base_url, api_key, tipo_usado)
+        modelos, endpoint, error, entradas = _escanear_como(base_url, api_key, tipo_usado)
         if error:
             alternativo = OTRO_TIPO[tipo_usado]
             print(f"  {Colors.YELLOW}no responde a {ENDPOINT_TIPO[tipo_usado]} ({error}); "
                   f"pruebo {ENDPOINT_TIPO[alternativo]}...{Colors.RESET}")
-            modelos_alt, endpoint_alt, error_alt = _escanear_como(base_url, api_key, alternativo)
+            modelos_alt, endpoint_alt, error_alt, entradas_alt = _escanear_como(
+                base_url, api_key, alternativo)
             if error_alt:
                 ConfigUI.print_error(f"Error al escanear: {error} "
                                      f"(tampoco responde a {ENDPOINT_TIPO[alternativo]}: {error_alt})")
@@ -97,12 +148,13 @@ def scan_single_provider(provider_name: str, cached_info: dict, manager: ConfigM
                     f"El servidor responde a {endpoint_alt}, pero tienes el tipo fijado en "
                     f"'{tipo_usado}': escaneo con {endpoint_alt} y lo dejo igual. Para seguir "
                     f"al servidor: ocm cache type {provider_name} auto")
-                modelos, endpoint = modelos_alt, endpoint_alt
+                modelos, endpoint, entradas = modelos_alt, endpoint_alt, entradas_alt
             else:
                 ConfigUI.print_warning(
                     f"La caché decia '{tipo_usado}' pero el servidor responde a {endpoint_alt}: "
                     f"lo cambio a '{alternativo}'.")
-                tipo_usado, modelos, endpoint = alternativo, modelos_alt, endpoint_alt
+                tipo_usado, modelos, endpoint, entradas = (alternativo, modelos_alt,
+                                                          endpoint_alt, entradas_alt)
                 fuente, se_detecto = "auto", True
     else:
         if forzar:
@@ -117,6 +169,7 @@ def scan_single_provider(provider_name: str, cached_info: dict, manager: ConfigM
             cached_info["last_scan_error"] = detalle or "ningun endpoint responde"
             return False
         tipo_usado, modelos, endpoint = prueba.tipo, prueba.models, prueba.endpoint
+        entradas = prueba.entradas or {}
         se_detecto = True
         if fijado:
             ConfigUI.print_warning(
@@ -147,6 +200,10 @@ def scan_single_provider(provider_name: str, cached_info: dict, manager: ConfigM
             print(f"  {Colors.YELLOW}Nota:{Colors.RESET} 'ocm update' no borra modelos ya escritos; "
                   f"quítalos con 'ocm model rm {provider_name} <MODELO>' o con "
                   f"'ocm configure {provider_name}', que ofrece la limpieza.")
+
+    # Que motor hay detras (ollama, llama.cpp, vLLM, SGLang...): es solo informativo,
+    # pero si ha cambiado conviene decirlo, porque cambia lo que se puede preguntar.
+    anotar_motor(cached_info, entradas, base_url, api_key)
 
     # Actualizar caché preservando uid, nombre visible, api key y opciones por modelo
     cached_info["models"] = new_models

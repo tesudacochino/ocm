@@ -56,7 +56,7 @@ ocm rename mole                    # Cambiar el nombre visible del provider
 
 | Comando | Descripción |
 |---------|-------------|
-| `ocm new` | Asistente interactivo para añadir o reconfigurar un provider |
+| `ocm new` | Asistente interactivo para añadir o reconfigurar un provider (autodetecta las opciones de los modelos; `--no-detectar` para saltarla) |
 | `ocm list` | Listar providers en `opencode.json` |
 | `ocm rm <nombre>` | Eliminar provider de `opencode.json` |
 | `ocm update [nombre] [--force]` | Actualizar `opencode.json` con datos de caché |
@@ -77,7 +77,7 @@ ocm rename mole                    # Cambiar el nombre visible del provider
 
 | Comando | Descripción |
 |---------|-------------|
-| `ocm cache update` | Escanear **todos** los providers y actualizar caché |
+| `ocm cache update` | Escanear **todos** los providers y actualizar caché (avisa si el motor de inferencia ha cambiado) |
 | `ocm cache update <nombre>` | Escanear un provider específico |
 | `ocm cache list` | Listar providers en caché |
 | `ocm cache type [nombre] [tipo]` | Ver o fijar si es Ollama o vLLM (solo afecta al escaneo) |
@@ -104,7 +104,8 @@ ocm rename mole                    # Cambiar el nombre visible del provider
 
 ```
 ocm new          →  Asistente         →  provider_cache.json  (+ opencode.json si acceptas)
-ocm cache update →  Escanea APIs      →  provider_cache.json
+                                       → rellena las opciones con lo que sepa el servidor
+ocm cache update →  Escanea APIs      →  provider_cache.json  (y comprueba el motor)
 ocm update       →  Lee caché         →  opencode.json  (solo añade, no pisa)
 ocm list         →  Muestra config    ←  opencode.json
 ocm configure    →  Repasa un provider →  caché + opencode.json  (con backup)
@@ -116,7 +117,8 @@ ocm model rm     →  Quita un modelo    ←  caché + opencode.json
 **Ejemplo completo:**
 
 ```bash
-# 1. Añadir un provider (pregunta nombre visible del provider y de los modelos)
+# 1. Añadir un provider: pregunta lo justo, escanea los modelos, rellena las
+#    opciones que sabe el servidor y enseña la propuesta antes de guardarla
 ocm new
 
 # 2. Escanear modelos disponibles
@@ -191,6 +193,12 @@ OpenAI bajo `/v1`.
 `ocm model info <proveedor> <modelo>` enseña además de dónde salió el tipo (detectado
 o fijado a mano) y por qué endpoint contestó el servidor en el último escaneo; si el
 tipo no cuadra con esa evidencia, lo avisa.
+
+Y no lo confundas con el **motor**, que es otra cosa: el tipo es «por dónde escanea
+ocm», el motor es «qué servidor hay realmente detrás» (ollama, llama.cpp, vLLM,
+SGLang, LM Studio). Ese segundo dato es el que te dice si puedes pedir visión,
+herramientas o cuánto contexto, y se comprueba solo en cada escaneo — ver
+[Qué motor hay detrás](#qué-motor-hay-detrás-ollama-llamacpp-vllm-sglang).
 
 ## Formato de opencode.json
 
@@ -436,6 +444,59 @@ Reglas que cumple siempre:
   se sacan del registro ni del nombre.
 - Al terminar recuerda que falta `ocm update <provider>` para que aterrice en
   `opencode.json`.
+
+### Que lo haga solo: autodetección al crear y repasar un provider
+
+Al registrar un provider no hace falta que salgas a lanzar `ocm model detect`: el
+asistente pregunta al servidor por ti y te deja ver la propuesta antes de guardarla.
+
+```bash
+ocm new                  # escanea los modelos y, antes de guardar, enseña qué ha averiguado
+ocm new --no-detectar    # el asistente de siempre, campo a campo
+ocm configure mole --no-detectar
+```
+
+El orden en `ocm new`, nada más escanear los modelos:
+
+1. Pregunta lo suyo: nombre visible, URL, api key, nombres de los modelos.
+2. Consulta los endpoints de metadatos y el registro de opencode —igual que
+   `ocm model detect`— y pinta la propuesta cuadro por cuadro, con su fuente.
+3. Hace **una sola pregunta**: *¿Guardar lo detectado en la caché?*. Con `y` se
+   escribe en la caché con su procedencia; con `n` no se toca nada.
+4. Si quieres rectificar algo (por ejemplo una capacidad que viene sólo de una pista
+   del nombre), se ofrece repasar modelo por modelo con el asistente campo a campo.
+5. Al final recuerda que falta `ocm update` para que aterrice en `opencode.json`.
+
+Si el servidor no suelta prenda y el registro tampoco conoce esos modelos, no se
+gasta ni una pregunta de más: dice que no ha podido averiguar nada y sigue adelante.
+
+En `ocm configure` la autodetección sólo corre para los modelos que **aún no tienen
+opciones** (o a los que nunca se les preguntó), para no repasar por detrás lo que ya
+dejaste puesto. `ocm model detect` sigue siendo la orden insistente: ésa la puedes
+repetir cuando quieras, y con `--force` si hace falta.
+
+### Qué motor hay detrás: ollama, llama.cpp, vLLM, SGLang
+
+El puerto no distingue —ollama, llama-server y vLLM conviven en el 11434—, así que
+ocm saca el motor de lo que dicen los propios JSON del servidor (`owned_by`,
+`details.format`, el `model_path` de `/props`, la forma de `/api/tags`) y lo apunta en
+la caché junto con la prueba de donde lo ha sacado:
+
+```
+  Motor: llama.cpp  (GET /props (modalities))
+```
+
+- Se comprueba en cada `ocm cache update` y al crear el provider, con lo que los
+  endpoints ya han contestado; sólo si la lista no dice nada se gasta una petición
+  extra a `/props`.
+- Si el motor que responde no es el que constaba, avisa: *«Ojo, el motor parece otro:
+  en la caché constaba 'ollama' y ahora responde como 'vllm'»*, y deja la nota puesta
+  para que la ficha de `ocm model info` lo recuerde hasta que el escaneo siguiente lo
+  confirme dos veces.
+- Es información de ocm: opencode no lee ese campo, así que el motor no rompe nada por
+  sí mismo. Lo que cambia es lo que le puedes pedir al servidor (visión, herramientas,
+  contexto), que es para lo que sirve saberlo.
+- No se inventa: si ningún modelo deja pista, ocm no dice motor.
 
 ### Reconfigurar un provider: `ocm configure`
 

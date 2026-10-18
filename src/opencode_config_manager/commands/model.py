@@ -11,7 +11,8 @@ from datetime import datetime
 
 from ..config import ConfigManager, ConfigUI, Colors
 from ..cache_models import normalize_models, set_model_option
-from ..deteccion import CLAVE_DETECTADO, CLAVE_FUENTES
+from ..deteccion import (CLAVE_DETECTADO, CLAVE_FUENTES, CLAVE_MOTOR,
+                         CLAVE_MOTOR_ANTERIOR, CLAVE_MOTOR_EVIDENCIA)
 from ..model_fields import (
     EFFECTIVE_DEFAULTS,
     describe_model,
@@ -364,6 +365,16 @@ def cmd_model_info(manager: ConfigManager, args):
         detalle = f"  ({' · '.join(notas)})" if notas else ""
         valor = estado["tipo"] or (Colors.YELLOW + "sin definir" + Colors.RESET)
         _fila("Tipo", valor + detalle)
+    motor = cache_info.get(CLAVE_MOTOR)
+    if motor:
+        detalle = ""
+        if cache_info.get(CLAVE_MOTOR_EVIDENCIA):
+            detalle = Colors.WHITE + f"  ({cache_info[CLAVE_MOTOR_EVIDENCIA]})" + Colors.RESET
+        _fila("Motor", Colors.BRIGHT_GREEN + motor + Colors.RESET + detalle)
+        anterior = cache_info.get(CLAVE_MOTOR_ANTERIOR)
+        if anterior and anterior != motor:
+            print(Colors.YELLOW + "  ! En el ultimo escaneo el motor cambio: antes "
+                  f"constaba '{anterior}'{Colors.RESET}")
     npm = (entrada_provider.get("npm") or cache_info.get("npm")
            or entrada_codificada.get("package"))
     if npm:

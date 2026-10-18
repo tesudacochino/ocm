@@ -22,6 +22,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from opencode_config_manager import api  # noqa: E402
 from opencode_config_manager.api import ScanResult  # noqa: E402
 from opencode_config_manager.cli import main  # noqa: E402
+import entorno  # noqa: E402
+
+entorno.sin_registro_models_dev()
 from opencode_config_manager.commands.utils import url_para_config  # noqa: E402
 
 CHECKS = []

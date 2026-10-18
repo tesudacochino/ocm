@@ -38,9 +38,15 @@ from .model_fields import MODALITIES, get_value
 # Donde vive el registro de models.dev que opencode mantiene descargado
 RUTA_REGISTRO = os.path.expanduser("~/.cache/opencode/models.json")
 
-# Claves de la entrada de modelo que ocm usa para si (cache-only, no van a opencode.json)
+# Claves de la entrada de provider que ocm usa para sí: son de la cache, no van a opencode.json
 CLAVE_FUENTES = "opciones_fuente"
 CLAVE_DETECTADO = "opciones_detectado_en"
+
+# Que motor de inferencia parece ser el servidor, y cuando se entero ocm
+CLAVE_MOTOR = "servidor"
+CLAVE_MOTOR_EVIDENCIA = "servidor_evidencia"
+CLAVE_MOTOR_DESDE = "servidor_desde"
+CLAVE_MOTOR_ANTERIOR = "servidor_anterior"
 
 # Lo que se trae del registro, y solo eso: el nombre visible, el estado y lo
 # experimental son decisiones del usuario, no datos del servidor
@@ -174,27 +180,65 @@ class Explorador:
 
 
 # --------------------------------------------------------------------- servidor --
+# Los motores que sabemos distinguir, por orden de especificidad, y las palabras con
+# las que cada uno se delata en los JSON que sirve
+MARCAS_MOTOR = (
+    ("sglang", ("sglang",)),
+    ("vllm", ("vllm",)),
+    ("lmstudio", ("lmstudio", "lm studio")),
+    ("llama.cpp", ("llama.cpp", "llama-server", "llamacpp")),
+    # 'quantization_level' y compania son la forma de /api/tags: solo ollama la usa
+    ("ollama", ("quantization_level", "size_parameter", "model_file")),
+)
+
+
+def _campos_motor(entrada, props, show) -> tuple:
+    """Los sitios donde un servidor suele escribir en que se ejecuta."""
+    return (("owned_by", (entrada or {}).get("owned_by")),
+            ("details", (entrada or {}).get("details")),
+            ("root", (entrada or {}).get("root")),
+            ("parent", (entrada or {}).get("parent")),
+            ("model_path", (props or {}).get("model_path")),
+            ("model", (show or {}).get("model") if isinstance(show, dict) else None))
+
+
+def _marca_motor(entrada, props, show) -> tuple:
+    """(motor, pista que lo delata), o (None, None) si el servidor no suelta prenda."""
+    for motor, marcas in MARCAS_MOTOR:
+        for marca in marcas:
+            for nombre, valor in _campos_motor(entrada, props, show):
+                if valor and marca in str(valor).lower():
+                    return motor, f"{nombre} contiene '{marca}'"
+    if props is not None and "modalities" in props:
+        # 'modalities' en /props solo lo tiene llama-server
+        return "llama.cpp", "GET /props (modalities)"
+    if show is not None:
+        return "ollama", "POST /api/show"
+    return None, None
+
+
 def _servidor_de(entrada, props, show) -> str:
     """Cual es el servidor, por las pistas que deja en los JSON."""
-    pistas = " ".join(str(p) for p in (
-        (entrada or {}).get("owned_by"),
-        (entrada or {}).get("root"),
-        (entrada or {}).get("parent"),
-        (props or {}).get("model_path"),
-        (show or {}).get("model", "") if isinstance(show, dict) else "",
-    ) if p).lower()
+    motor, _ = _marca_motor(entrada, props, show)
+    return motor
 
-    if "sglang" in pistas:
-        return "sglang"
-    if "vllm" in pistas:
-        return "vllm"
-    if "llama.cpp" in pistas or "llama-server" in pistas or "llamacpp" in pistas:
-        return "llama.cpp"
-    if props is not None and "modalities" in props:
-        return "llama.cpp"          # /props con 'modalities' solo lo tiene llama-server
-    if show is not None:
-        return "ollama"
-    return None
+
+def motor_de(entradas, props=None) -> tuple:
+    """De que motor va el provider, con lo que los endpoints ya contestaron.
+
+    Se mira cada modelo y se hace mayoría: un servidor que lista doce modelos 'vllm'
+    y uno raro es vllm. Devuelve (motor, evidencia), o (None, None) si ningun modelo
+    deja pista (no se inventa: mejor no decir nada que decir 'ollama' sin saberlo).
+    """
+    votos = {}
+    for model_id, entrada in (entradas or {}).items():
+        motor, evidencia = _marca_motor(entrada, props, None)
+        if motor:
+            votos.setdefault(motor, []).append((model_id, evidencia))
+    if not votos:
+        return None, None
+    motor = max(sorted(votos), key=lambda m: len(votos[m]))
+    return motor, votos[motor][0][1]
 
 
 def _lista_capability(valor) -> list:
@@ -346,6 +390,7 @@ def _desde_show(show, d, textos):
 
 # --------------------------------------------------------------------- registro --
 _INDICE = {}
+_AVISO_REGISTRO = None      # sobre que ruta se aviso ya de que no existe
 
 
 def _nombre_del_repo(ruta: str) -> str:
@@ -419,10 +464,14 @@ def _indice_registro(ruta: str = None):
 
 def _desde_registro(candidatos, d, textos):
     """Buscar el modelo en el registro de opencode (models.dev)."""
+    global _AVISO_REGISTRO
     indice = _indice_registro()
     if indice is None:
-        d.avisos.append("no se encontro el registro de opencode en "
-                        + str(RUTA_REGISTRO))
+        # Se avisa una vez por ruta y comando, no por modelo: es lo mismo para todos
+        if _AVISO_REGISTRO != RUTA_REGISTRO:
+            d.avisos.append("no se encontro el registro de opencode en "
+                            + str(RUTA_REGISTRO))
+            _AVISO_REGISTRO = RUTA_REGISTRO
         return
     if not indice:
         return

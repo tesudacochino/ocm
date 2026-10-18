@@ -135,6 +135,133 @@ def _entradas_crudas(base_url: str, api_key: str) -> tuple:
     return entradas, fallos
 
 
+def consultar_modelos(base_url: str, api_key: str, modelos: dict, seleccion: list,
+                      provider: str = "", entradas: dict = None, usar_registro: bool = True,
+                      probar: bool = False, forzar: bool = False, pintar: bool = True) -> tuple:
+    """Preguntar al servidor por cada modelo; devuelve (trabajos, totales).
+
+    Cada trabajo es `{'model_id', 'entrada', 'det', 'filas'}`, y `filas` trae ya la
+    accion que se tomara: 'respeta' cuando el valor lo puso el usuario y no se paso
+    --force. Aqui solo se mira y se pinta; escribir lo decide quien llama, con
+    `aplicar_filas`. Es la pieza que comparten `ocm model detect`, `ocm new` y
+    `ocm configure`.
+    """
+    fallos = []
+    if entradas is None:
+        entradas, fallos = _entradas_crudas(base_url, api_key)
+    explorador = Explorador(base_url, api_key)
+
+    if pintar and not entradas:
+        detalle = (" (" + "; ".join(fallos)[:130] + ")") if fallos else ""
+        ConfigUI.print_warning("El servidor no contesto a la lista de modelos" + detalle +
+                               "; se usara lo poco que se pueda saber del resto.")
+
+    totales = {"anade": 0, "cambia": 0, "igual": 0, "respeta": 0}
+    trabajos = []
+    for model_id in seleccion:
+        entrada_cache = modelos.get(model_id) or {}
+        nombre = entrada_cache.get("name")
+        det = detectar_opciones(
+            base_url, api_key, model_id,
+            entrada=entradas.get(model_id),
+            nombre=nombre if nombre and nombre != model_id else None,
+            explorador=explorador,
+            usar_registro=usar_registro,
+            probar=probar,
+        )
+        filas = filas_de_un_modelo(entrada_cache, det)
+        trabajos.append({"model_id": model_id, "entrada": entrada_cache,
+                         "det": det, "filas": filas})
+        if not pintar:
+            continue
+
+        titulo = f"{provider}/{model_id}" if provider else model_id
+        if det.servidor:
+            titulo += f"   [{det.servidor}]"
+        print(f"\n{Colors.BOLD}{Colors.BRIGHT_BLUE}{titulo}{Colors.RESET}")
+
+        if not filas:
+            print("  No se ha podido averiguar nada nuevo.")
+        else:
+            _pintar_cabecera()
+            for fila in filas:
+                nota = ""
+                if fila["accion"] == "cambia" and not forzar:
+                    fila["accion"] = "respeta"
+                    nota = Colors.YELLOW + "   (ya lo tenias puesto: no se toca)" + Colors.RESET
+                if fila["suposicion"]:
+                    nota += Colors.YELLOW + "   (pista del nombre, no una prueba)" + Colors.RESET
+                _linea(fila, nota)
+                totales[fila["accion"]] = totales.get(fila["accion"], 0) + 1
+
+        for aviso in det.avisos:
+            print(Colors.YELLOW + "  ! " + aviso + Colors.RESET)
+
+    return trabajos, totales
+
+
+def aplicar_propuesta(trabajos: list, forzar: bool = False) -> int:
+    """Guardar en la cache (en memoria) lo que propone `consultar_modelos`."""
+    escritos = 0
+    for trabajo in trabajos:
+        escritos += aplicar_filas(trabajo["entrada"], trabajo["filas"], forzar)
+    return escritos
+
+
+def merece_deteccion(entrada: dict) -> bool:
+    """Si a este modelo le conviene que se le pregunte al servidor.
+
+    No se repite la consulta a quien ya la tiene hecha (`ocm model detect` deja la
+    marca en la cache) ni a los que alguien ya configuro: para eso esta el comando,
+    que se puede lanzar cuando haga falta, con --force si hace falta insistir.
+    """
+    if not isinstance(entrada, dict) or entrada.get(CLAVE_DETECTADO):
+        return False
+    for clave in ("limit", "modalities", "reasoning", "tool_call", "temperature",
+                  "attachment", "experimental", "status", "options"):
+        if entrada.get(clave):
+            return False
+    return True
+
+
+def proponer_en_asistente(base_url: str, api_key: str, modelos: dict, seleccion: list,
+                          provider: str = "") -> int:
+    """Lo que hacen `ocm new` y `ocm configure` despues de escanear.
+
+    Consulta al servidor (los dos endpoints, como `ocm model detect`, para ver lo
+    mismo que veria el comando), enseña lo que sabe, y pregunta una sola vez si lo
+    guarda. Si no se ha averiguado nada, no gasta ni una pregunta: se queda en cero
+    y el asistente campo a campo seguira ofreciendose igual que antes.
+    """
+    seleccion = [m for m in seleccion if m in modelos]
+    if not base_url or not seleccion:
+        return 0
+
+    print(f"\n{Colors.BOLD}Que sabe el servidor sobre estas opciones?{Colors.RESET}")
+    trabajos, totales = consultar_modelos(base_url, api_key, modelos, seleccion,
+                                          provider=provider)
+    posibles = totales["anade"]
+    if not posibles:
+        ConfigUI.print_info("El servidor no ha aportado nada nuevo; se preguntara campo a campo.")
+        return 0
+
+    dudoso = sum(1 for t in trabajos for f in t["filas"] if f["suposicion"])
+    resumen = f"{posibles} opciones para {len(seleccion)} modelo(s)"
+    if dudoso:
+        resumen += (f", {dudoso} de ellas solo por pistas del nombre"
+                    f" {Colors.YELLOW}(a comprobar){Colors.RESET}")
+    print(f"\n{Colors.BRIGHT_GREEN}Detectadas{Colors.RESET} {resumen}.")
+    if not ConfigUI.ask_yes_no("¿Guardar lo detectado en la cache?", default="y"):
+        ConfigUI.print_info("Se deja como estaba; puedes hacerlo luego con "
+                            "'ocm model detect'.")
+        return 0
+
+    escritos = aplicar_propuesta(trabajos, forzar=False)
+    print(f"{Colors.BRIGHT_GREEN}Guardadas {escritos} opcion(es) en la cache.{Colors.RESET} "
+          "Falta 'ocm update' para llevarlas a opencode.json.")
+    return escritos
+
+
 def cmd_model_detect(manager: ConfigManager, args):
     """`ocm model detect [PROVIDER] [MODELO] [--apply] [--force] [--all] [--probar]`."""
     manager.load_config()
@@ -172,70 +299,28 @@ def cmd_model_detect(manager: ConfigManager, args):
 
     if not quiero_json:
         ConfigUI.print_info(f"Consultando {base_url}...")
-    entradas, fallos = _entradas_crudas(base_url, api_key)
-    explorador = Explorador(base_url, api_key)
-    if not entradas and not quiero_json:
-        detalle = (" (" + "; ".join(fallos)[:130] + ")") if fallos else ""
-        ConfigUI.print_warning("El servidor no contesto a la lista de modelos" + detalle +
-                               "; se usara lo poco que se pueda saber del resto.")
 
-    volcado = []
-    totales = {"anade": 0, "cambia": 0, "igual": 0, "respeta": 0}
-    escritos_total = 0
-
-    for model_id in seleccion:
-        entrada_cache = modelos.get(model_id) or {}
-        nombre = entrada_cache.get("name")
-        det = detectar_opciones(
-            base_url, api_key, model_id,
-            entrada=entradas.get(model_id),
-            nombre=nombre if nombre and nombre != model_id else None,
-            explorador=explorador,
-            usar_registro=usar_registro,
-            probar=probar,
-        )
-        filas = filas_de_un_modelo(entrada_cache, det)
-
-        if quiero_json:
-            volcado.append({
-                "provider": provider,
-                "model": model_id,
-                "servidor": det.servidor,
-                "valores": det.valores,
-                "fuentes": det.fuentes,
-                "suposiciones": det.suposiciones,
-                "avisos": det.avisos,
-                "aplicables": [f["clave"] for f in filas
-                               if f["accion"] in ("anade", "cambia")],
-            })
-            continue
-
-        titulo = f"{provider}/{model_id}"
-        if det.servidor:
-            titulo += f"   [{det.servidor}]"
-        print(f"\n{Colors.BOLD}{Colors.BRIGHT_BLUE}{titulo}{Colors.RESET}")
-
-        if not filas:
-            print("  No se ha podido averiguar nada nuevo.")
-        else:
-            _pintar_cabecera()
-            for fila in filas:
-                nota = ""
-                if fila["accion"] == "cambia" and not forzar:
-                    fila["accion"] = "respeta"
-                    nota = Colors.YELLOW + "   (ya lo tenias puesto: no se toca)" + Colors.RESET
-                if fila["suposicion"]:
-                    nota += Colors.YELLOW + "   (pista del nombre, no una prueba)" + Colors.RESET
-                _linea(fila, nota)
-                totales[fila["accion"]] = totales.get(fila["accion"], 0) + 1
-
-        for aviso in det.avisos:
-            print(Colors.YELLOW + "  ! " + aviso + Colors.RESET)
-
-        if aplicar and filas:
-            escritos_total += aplicar_filas(entrada_cache, filas, forzar)
+    trabajos, totales = consultar_modelos(
+        base_url, api_key, modelos, seleccion,
+        provider=provider,
+        usar_registro=usar_registro,
+        probar=probar,
+        forzar=forzar,
+        pintar=not quiero_json,
+    )
 
     if quiero_json:
+        volcado = [{
+            "provider": provider,
+            "model": trabajo["model_id"],
+            "servidor": trabajo["det"].servidor,
+            "valores": trabajo["det"].valores,
+            "fuentes": trabajo["det"].fuentes,
+            "suposiciones": trabajo["det"].suposiciones,
+            "avisos": trabajo["det"].avisos,
+            "aplicables": [f["clave"] for f in trabajo["filas"]
+                           if f["accion"] in ("anade", "cambia")],
+        } for trabajo in trabajos]
         print(json.dumps(volcado, indent=2, ensure_ascii=False))
         return
 
@@ -244,6 +329,7 @@ def cmd_model_detect(manager: ConfigManager, args):
               f"{totales['respeta']} respetadas, {totales['cambia']} cambiadas.")
 
     if aplicar:
+        escritos_total = aplicar_propuesta(trabajos, forzar)
         if escritos_total:
             cache_info["models"] = modelos
             manager.save_cache(touch=False)

@@ -17,6 +17,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from opencode_config_manager.cli import main  # noqa: E402
+import entorno  # noqa: E402
+
+entorno.sin_registro_models_dev()
 
 CHECKS = []
 
