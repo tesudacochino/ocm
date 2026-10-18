@@ -21,11 +21,15 @@ opencodeconfig/
 │   ├── __main__.py            # Entry point para python -m
 │   ├── config.py              # ConfigManager, ConfigUI, Colors
 │   ├── api.py                 # ProviderScanner, ScanResult
+│   ├── cache_models.py        # Modelo de datos de la caché (v2) + migración
+│   ├── model_fields.py        # Spec declarativa de las opciones de un modelo
 │   ├── cli.py                 # Parser argparse + dispatch
 │   └── commands/
 │       ├── __init__.py
-│       ├── utils.py           # get_provider_type, create_backup, sanitize_config
+│       ├── utils.py           # get_provider_type, create_backup, build/merge de config
 │       ├── provider.py        # new, list, remove
+│       ├── model.py           # model list / model name / rename
+│       ├── options.py         # model options / show: asistente campo a campo
 │       ├── scan.py            # scan, scan_single_provider
 │       ├── update.py          # update provider/global
 │       ├── cache.py           # cache show/clear
@@ -54,6 +58,52 @@ opencodeconfig/
 - `scan_vllm()` → `GET /v1/models` → `ScanResult`
 - `ScanResult` dataclass con `.success`, `.models`, `.error`
 
+**`cache_models.py`** - Datos de la caché por modelo:
+- `models` en la caché es un dict `{model_id: {name, limit, modalities, ...}}`
+- `normalize_models()` acepta el formato antiguo (lista de ids) y el nuevo
+- `merge_scanned_models()` conserva nombre/opciones al rescannear
+- `migrate_cache()` migra en memoria y `ConfigManager.load_cache()` la persiste
+- `MANAGED_MODEL_FIELDS` = claves de modelo que ocm escribe en opencode.json
+- `_clean_entry()` canonicaliza formas ajenas: `toolcall`→`tool_call`,
+  `capabilities.{tools,reasoning,input,output,vision}`, `input`/`output` sueltos
+  → `modalities.*` (usa `model_fields.canonical_key`)
+- `adopt_model_options()` rellena en la caché lo que solo existe en opencode.json
+
+**`commands/utils.py`** - Escritura de `opencode.json`:
+- `build_provider_config()` → config "deseada" desde la caché
+- `merge_provider_config(existing, desired, force)` → **no destructivo**: conserva
+  claves ajenas y modelos existentes; sin `--force` tampoco sobrescribe las suyas
+- `get_provider_type()` con alias (`llama.cpp`, `lmstudio`, ...), `displayify()`
+
+**`model_fields.py`** - Que se puede configurar en un modelo (unica fuente de verdad):
+- `FIELDS`: lista de `FieldSpec(key, label, kind, help, presets, advanced, depends_on)`
+  en el orden en que los pregunta el asistente
+- `kind` ∈ `text|bool|int|multi|choice`; `coerce()` valida y normaliza
+  (`128k`→131072, `vision`→`image`, `1,3`→`text,image`)
+- numeros: se guardan tal cual (`128000` no pasa a `131072`)
+- `get_value()/set_value()` trabajan por ruta (`limit.context`) y limpian el
+  contenedor al vaciarse
+- `serialize_model()` → solo emite claves con contenido + avisos (p.ej. `limit`
+  sin `output`); `describe_model()` → resumen para listados
+
+**`commands/options.py`** - El asistente campo a campo:
+- `ask_field()` implementa la interaccion: Intro = KEEP, `-` = quitar,
+  `?` = ayuda, `s` = salir (STOP)
+- `configure_model_entry()` recorre `visible_fields(advanced)` respetando
+  `depends_on` (no pregunta `limit.output` sin `limit.context`)
+- `apply_assignments()` es la via no interactiva (`--set clave=valor`)
+- `sync_model_config(..., changed_keys)` escribe en `opencode.json` **solo las
+  claves que el usuario toco** (`changed_keys`) dentro de las que "posee" el
+  asistente (`WIZARD_OWNED_KEYS`); las borra si se quitaron. `options`, `variants`,
+  `cost`, `headers` son ajenas y no se tocan nunca. Si el modelo no estaba en el
+  config se crea con todo lo de la caché
+- `commands/utils.py::refresh_cache_from_config()` adopta en la caché las opciones
+  que solo existen en `opencode.json` (lo escrito a mano) la primera vez que se
+  lista/configura/actualiza el provider; la caché manda si ya tiene el campo, y
+  `name` solo se adopta cuando en la caché es una copia del id
+- Cambiar opciones guarda la caché con `save_cache(touch=False)`: no mueve la fecha
+  del ultimo escaneo
+
 **`cli.py`** - Parser + dispatch (~130 líneas):
 - Define argumentos con argparse
 - Dispatch a funciones en `commands/`
@@ -79,8 +129,9 @@ user → ocm cache update → ProviderScanner (API)
                        → Actualiza caché
 
 user → ocm update     → Lee caché
-                       → Genera config opencode.ai
-                       → Actualiza opencode.json
+                       → build_provider_config() (deseado)
+                       → merge_provider_config() con lo que hay en opencode.json
+                       → Backup + escribir (solo añade, no borra)
 ```
 
 ## Comandos principales
@@ -90,7 +141,14 @@ user → ocm update     → Lee caché
 ocm new                          # Asistente interactivo
 ocm list                         # Listar providers en opencode.json
 ocm rm NAME                      # Eliminar provider de opencode.json
-ocm update [PROVIDER]            # Escribir caché → opencode.json
+ocm update [PROVIDER]            # Escribir caché → opencode.json (no destructivo)
+ocm update [PROVIDER] --force    # Idem, sobrescribiendo las claves de ocm
+ocm model list [PROVIDER]        # Modelos + nombre visible + dónde están
+ocm model name [P] [M]           # Renombrar modelo (caché + opencode.json)
+ocm model options [P] [M]        # Asistente: contexto, modalidades, capacidades
+ocm model options P M --set limit.context=131072   # Sin preguntar (script)
+ocm model show [P] [M]           # Ver el JSON de las opciones de un modelo
+ocm rename [PROVIDER]            # Renombrar nombre visible del provider
 
 # Caché → provider_cache.json
 ocm cache update [PROVIDER]       # Escanear APIs y actualizar caché
@@ -129,20 +187,46 @@ uv run opencode-config-manager --help
 }
 ```
 
-### provider_cache.json (caché del gestor)
+### provider_cache.json (caché del gestor, formato v2)
 ```json
 {
+  "cache_version": 2,
   "cache_timestamp": 1711900800,
   "providers": {
     "ollama-local": {
-      "models": ["llama2", "mistral"],
+      "uid": "4f9bc79b",
+      "name": "Ollama Local",
+      "models": {
+        "llama2": {
+          "name": "Llama 2",
+          "limit": { "context": 131072, "output": 8192 },
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        }
+      },
       "last_scan": 1711900800,
       "baseUrl": "http://127.0.0.1:11434",
-      "provider_type": "ollama"
+      "provider_type": "ollama",
+      "apiKey": "sk-...",
+      "reachable": true
     }
   }
 }
 ```
+
+- `models` en lista (formato v1) se migra solo al abrir la caché.
+- `uid`: identidad estable del provider, no depende del nombre.
+- `reachable`: `false` cuando el último escaneo no pudo hablar con la URL.
+- Lo que hay en `models.<id>` se copia a `provider.<id>.models.<id>` en opencode.json.
+
+### Reglas de escritura en opencode.json
+
+1. `ocm update` **fusiona**, nunca reemplaza: conserva claves que ocm no gestiona
+   y no borra providers ni modelos.
+2. Sin `--force` no se sobrescribe una clave ya existente; para cambiar nombres se
+   usa `ocm rename` / `ocm model name`, que escriben a la vez caché y opencode.json.
+3. `npm` solo se fija al crear el provider (no se pisa un SDK elegido a mano).
+4. Se crea backup rotativo antes de escribir (`create_backup`, máx. 10).
+5. `ocm update` no escribe el campo `model` ni el bloque `providers` (plural, v2).
 
 ## Paths por defecto
 

@@ -5,6 +5,97 @@ Comandos de depuración y validación.
 import json
 
 from ..config import ConfigManager, ConfigUI
+from ..cache_models import MANAGED_MODEL_FIELDS
+
+# Claves de provider aceptadas por opencode según la clave raíz
+PROVIDER_KEYS = {"api", "name", "env", "id", "npm", "whitelist", "blacklist",
+                 "options", "models"}
+PROVIDER_KEYS_V2 = {"canonical", "name", "env", "package", "compatibility",
+                    "settings", "headers", "body", "models"}
+
+# Claves de modelo aceptadas ('provider' clásico y 'providers' de v2)
+MODEL_KEYS = set(MANAGED_MODEL_FIELDS) | {"disabled"}
+MODEL_KEYS_V2 = {"modelID", "family", "name", "releaseDate", "compatibility",
+                 "package", "settings", "headers", "body", "capabilities",
+                 "variants", "cost", "disabled", "limit"}
+
+MODALITIES = {"text", "audio", "image", "video", "pdf"}
+
+# Pistas para los errores más comunes al escribir la config a mano
+KEY_HINTS = {
+    "baseUrl": "debería ser 'baseURL' dentro de 'options'",
+    "baseURL": "debería ir dentro de 'options'",
+    "thinkingLevelMap": "no existe en el esquema; usa 'variants' con 'settings'",
+    "reasoning_effort": "usa 'variants' o las opciones del proveedor",
+}
+
+
+def _hint(key: str, encoded: bool):
+    """Pista para una clave mal colocada, según el formato ('provider' o 'providers')."""
+    container = "settings" if encoded else "options"
+    if key in ("baseUrl", "baseURL", "apiKey", "headers"):
+        return f"debería ir dentro de '{container}'"
+    if key in ("api", "npm", "package"):
+        if encoded and key != "package":
+            return "en 'providers' el paquete se fija con 'package'"
+        if not encoded and key == "api":
+            return "para elegir el paquete del SDK usa 'npm' (o 'package' en 'providers')"
+        if key == "package":
+            return "en 'provider' el paquete se fija con 'npm'"
+        return None
+    if key == "options" and encoded:
+        return "en 'providers' se usa 'settings'"
+    if key == "settings" and not encoded:
+        return "en 'provider' se usa 'options'"
+    return KEY_HINTS.get(key)
+
+
+def _check_provider(pname: str, pconfig: dict, path: str, encoded: bool = False) -> list:
+    """Avisos sobre claves de provider y de modelos según el esquema oficial."""
+    notes = []
+    provider_allowed = PROVIDER_KEYS_V2 if encoded else PROVIDER_KEYS
+    model_allowed = MODEL_KEYS_V2 if encoded else MODEL_KEYS
+
+    for key in pconfig:
+        if key in provider_allowed:
+            continue
+        hint = _hint(key, encoded)
+        notes.append(f"{path}: clave no reconocida '{key}'" + (f" ({hint})" if hint else ""))
+
+    models = pconfig.get("models")
+    if models is None:
+        return notes
+
+    if not isinstance(models, dict):
+        notes.append(f"{path}.models debe ser un objeto keyed por el id de cada modelo "
+                     "(tal como lo escribe 'ocm update')")
+        return notes
+
+    for mid, entry in models.items():
+        if not isinstance(entry, dict):
+            notes.append(f"{path}.models.{mid} debe ser un objeto")
+            continue
+        for key in entry:
+            if key in model_allowed:
+                continue
+            hint = KEY_HINTS.get(key)
+            if encoded and key in ("input", "output"):
+                hint = f"en v2 va en 'capabilities.{key}'"
+            notes.append(f"{path}.models.{mid}: clave no reconocida '{key}'"
+                         + (f" ({hint})" if hint else ""))
+
+        limit = entry.get("limit")
+        if isinstance(limit, dict) and not {"context", "output"} <= set(limit):
+            notes.append(f"{path}.models.{mid}: 'limit' debería incluir 'context' y 'output'")
+
+        modalities = entry.get("modalities")
+        if isinstance(modalities, dict):
+            for side in ("input", "output"):
+                for value in modalities.get(side) or []:
+                    if value not in MODALITIES:
+                        notes.append(f"{path}.models.{mid}: modalidad '{side}' no válida: '{value}'")
+
+    return notes
 
 
 def validate_config(config_data: dict) -> tuple[bool, list[str], list[str]]:
@@ -34,9 +125,14 @@ def validate_config(config_data: dict) -> tuple[bool, list[str], list[str]]:
     if provider is not None and not isinstance(provider, dict):
         errors.append("Campo 'provider' debe ser un objeto JSON")
 
+    # Formato nuevo de opencode v2: 'providers' (plural), con otro esquema
+    providers = config_data.get("providers")
+    if providers is not None and not isinstance(providers, dict):
+        errors.append("Campo 'providers' debe ser un objeto JSON")
+
     # Verificar que hay al menos providers o model configurado
-    if not provider and not model:
-        warnings.append("No hay 'provider' ni 'model' configurado. Ejecuta: ocm new")
+    if not provider and not providers and not model:
+        warnings.append("No hay 'provider', 'providers' ni 'model' configurado. Ejecuta: ocm new")
 
     # Verificar que cada provider tiene estructura correcta
     if isinstance(provider, dict):
@@ -46,17 +142,29 @@ def validate_config(config_data: dict) -> tuple[bool, list[str], list[str]]:
                 continue
             if "models" not in pconfig and "npm" in pconfig:
                 warnings.append(f"Provider '{pname}' no tiene modelos configurados")
+            warnings.extend(_check_provider(pname, pconfig, f"provider.{pname}"))
 
-    # Campos válidos según schema de opencode.ai
+    # Formato nuevo de opencode v2: 'providers' (plural), con otro esquema
+    if isinstance(providers, dict):
+        for pname, pconfig in providers.items():
+            if not isinstance(pconfig, dict):
+                errors.append(f"Provider '{pname}' (en 'providers') debe ser un objeto")
+                continue
+            warnings.extend(_check_provider(pname, pconfig, f"providers.{pname}", True))
+
+    # Campos válidos según schema de opencode.ai (opencode.ai/config.json)
     valid_top_level_fields = {
         "$schema",
-        "logLevel", "server", "command", "skills", "watcher", "snapshot",
-        "plugin", "share", "autoshare", "autoupdate",
-        "disabled_providers", "enabled_providers",
-        "model", "small_model", "default_agent", "username",
-        "mode", "agent", "provider",
-        "mcp", "theme", "tui", "keybinds", "formatter",
-        "instructions", "permission", "tools", "ollama",
+        "shell", "model", "default_agent", "update", "share", "enterprise",
+        "username", "permissions", "policies", "agents", "snapshots", "watcher",
+        "formatter", "lsp", "media", "tool_output", "mcp", "compaction", "skills",
+        "commands", "instructions", "references", "websearch", "plugins",
+        "worktree", "warming", "experimental", "logLevel", "server", "command",
+        "reference", "snapshot", "plugin", "autoshare", "autoupdate",
+        "disabled_providers", "enabled_providers", "small_model", "subagent_depth",
+        "mode", "agent", "provider", "providers", "layout", "permission",
+        "tools", "attachment",
+        "theme", "tui", "keybinds", "ollama",
     }
     unknown_fields = [key for key in config_data.keys() if key not in valid_top_level_fields]
     for key in unknown_fields:

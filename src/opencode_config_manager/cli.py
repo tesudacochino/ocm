@@ -23,6 +23,8 @@ from .commands.provider import cmd_provider_new, cmd_provider_list, cmd_provider
 from .commands.scan import cmd_scan
 from .commands.update import cmd_update_provider, cmd_update_global
 from .commands.cache import cmd_cache_list, cmd_cache_clear, cmd_cache_remove
+from .commands.model import cmd_model_list, cmd_model_rename, cmd_provider_rename
+from .commands.options import cmd_model_options, cmd_model_show
 from .commands.debug import cmd_debug_config
 
 
@@ -42,6 +44,12 @@ Ejemplos:
   ocm cache list                   # Listar providers en caché
   ocm cache rm <nombre>            # Eliminar provider de caché
   ocm cache clear                  # Borrar toda la caché
+  ocm model list [PROVIDER]        # Modelos y nombres visibles
+  ocm model name [PROVIDER] [MODELO]  # Renombrar un modelo
+  ocm model options [PROVIDER] [MODELO]  # Contexto, modalidades, capacidades
+  ocm model options P M --set limit.context=131072 --set modalities.input=text,image
+  ocm model show [PROVIDER] [MODELO]    # Ver sus opciones
+  ocm rename [PROVIDER]            # Renombrar el nombre visible de un provider
   ocm config validate              # Validar integridad de la configuración
 
 Flujo típico:
@@ -69,7 +77,7 @@ Flujo típico:
     subparsers = parser.add_subparsers(dest="command", help="Comandos disponibles")
 
     # ── Comandos principales (opencode.json) ─────────────────────────
-    subparsers.add_parser("new", help="Crear nuevo provider")
+    subparsers.add_parser("new", help="Crear o reconfigurar un provider (asistente)")
     subparsers.add_parser("list", aliases=["ls"], help="Listar providers configurados")
 
     rm_parser = subparsers.add_parser("remove", aliases=["rm"], help="Eliminar un provider")
@@ -77,6 +85,43 @@ Flujo típico:
 
     update_parser = subparsers.add_parser("update", help="Actualizar configuración de opencode con la caché")
     update_parser.add_argument("provider", nargs="?", help="Provider a actualizar (todos si no se especifica)")
+    update_parser.add_argument(
+        "--force", "-f",
+        action="store_true",
+        help="Sobrescribir las claves que gestiona ocm (por defecto solo se añaden)"
+    )
+
+    # ── Grupo: model (nombres visibles y opciones de modelo) ─────────
+    model_parser = subparsers.add_parser("model", help="Gestión de modelos y nombres visibles")
+    model_sub = model_parser.add_subparsers(dest="model_command", help="Comandos de modelos")
+    model_list = model_sub.add_parser("list", aliases=["ls"], help="Listar modelos de un provider")
+    model_list.add_argument("provider", nargs="?", help="Provider (se pregunta si se omite)")
+    model_name = model_sub.add_parser("name", aliases=["rename"], help="Cambiar el nombre visible de un modelo")
+    model_name.add_argument("provider", nargs="?", help="Provider (se pregunta si se omite)")
+    model_name.add_argument("model", nargs="?", help="Modelo (se pregunta si se omite)")
+    model_name.add_argument("--name", "-n", help="Nuevo nombre visible (si se omite, se pregunta)")
+
+    model_options = model_sub.add_parser(
+        "options", aliases=["opts", "configure"],
+        help="Configurar las opciones de un modelo (contexto, modalidades, capacidades)")
+    model_options.add_argument("provider", nargs="?", help="Provider (se pregunta si se omite)")
+    model_options.add_argument("model", nargs="?", help="Modelo (se pregunta si se omite)")
+    model_options.add_argument("--all", "-a", action="store_true",
+                               help="Recorrer todos los modelos del provider")
+    model_options.add_argument("--advanced", action="store_true",
+                               help="Incluir tambien las opciones avanzadas")
+    model_options.add_argument("--set", "-s", action="append", metavar="CLAVE=VALOR",
+                               help="Fijar una opcion sin preguntar (repetible), "
+                                    "ej: --set limit.context=131072 --set modalities.input=text,image")
+
+    model_show = model_sub.add_parser("show", aliases=["info"],
+                                      help="Ver en detalle las opciones de un modelo")
+    model_show.add_argument("provider", nargs="?", help="Provider (se pregunta si se omite)")
+    model_show.add_argument("model", nargs="?", help="Modelo (se pregunta si se omite)")
+
+    rename_parser = subparsers.add_parser("rename", help="Cambiar el nombre visible de un provider")
+    rename_parser.add_argument("provider", nargs="?", help="Provider (se pregunta si se omite)")
+    rename_parser.add_argument("--name", "-n", help="Nuevo nombre visible (si se omite, se pregunta)")
 
     # ── Grupo: cache (provider_cache.json) ───────────────────────────
     cache_parser = subparsers.add_parser("cache", help="Gestión de caché de providers")
@@ -133,6 +178,23 @@ def main(args: list = None):
             cmd_update_provider(manager, parsed_args)
         else:
             cmd_update_global(manager, parsed_args)
+
+    # ── Grupo: model / rename ────────────────────────────────────────
+    elif parsed_args.command == "model":
+        sub = getattr(parsed_args, "model_command", None)
+        if sub in ("name", "rename"):
+            cmd_model_rename(manager, parsed_args)
+        elif sub in ("options", "opts", "configure"):
+            cmd_model_options(manager, parsed_args)
+        elif sub in ("show", "info"):
+            cmd_model_show(manager, parsed_args)
+        elif sub in ("list", "ls"):
+            cmd_model_list(manager, parsed_args)
+        else:
+            cmd_model_list(manager, parsed_args)
+
+    elif parsed_args.command == "rename":
+        cmd_provider_rename(manager, parsed_args)
 
     # ── Grupo: cache ─────────────────────────────────────────────────
     elif parsed_args.command in ("cache", "scan"):

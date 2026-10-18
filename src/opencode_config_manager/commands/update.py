@@ -1,124 +1,173 @@
 """
 Comandos de actualización de opencode.json.
+
+`ocm update` escribe desde la caché (NO escanea en tiempo real) de forma no
+destructiva: combina la configuración deseada con la que ya hay en el archivo,
+de modo que sobreviven las claves que ocm no gestiona (npm manual, env,
+whitelist/blacklist, headers, opciones de modelo escritas a mano, ...) y tampoco
+se borran providers ni modelos existentes.
 """
 
 import shutil
 from datetime import datetime
 
-from ..config import ConfigManager, ConfigUI
-from .utils import get_provider_type, create_backup, sanitize_config_for_opencode
+from ..config import ConfigManager, ConfigUI, Colors
+from ..cache_models import normalize_models, provider_needs_rescan
+from .utils import (
+    build_provider_config,
+    create_backup,
+    get_provider_type,
+    merge_provider_config,
+    provider_entry_from_config,
+    refresh_cache_from_config,
+)
 
 
-def cmd_update_provider(manager: ConfigManager, args, provider: str = None):
+def _resolve_provider(name: str, manager: ConfigManager):
+    """Resolver un provider por nombre o por uid de la caché."""
+    providers = manager.cache_data.get("providers", {})
+    if name in providers:
+        return name
+    for cache_name, cache_info in providers.items():
+        if cache_info.get("uid") == name:
+            return cache_name
+    return None
+
+
+def _print_cache_providers(manager: ConfigManager, requested: str = None):
+    configured = manager.config_data.get("provider", {}) if manager.config_data else {}
+    if requested and isinstance(configured, dict) and requested in configured:
+        ConfigUI.print_info(
+            f"'{requested}' existe en opencode.json pero no en la caché. "
+            f"Ejecuta: ocm new {requested}"
+        )
+    providers = manager.cache_data.get("providers", {})
+    if providers:
+        print("Proveedores disponibles en caché:")
+        for name, info in providers.items():
+            uid = info.get("uid", "-")
+            count = len(normalize_models(info.get("models")))
+            print(f"  - {name} (uid: {uid}, {count} modelos)")
+    else:
+        print("La caché está vacía. Ejecuta: ocm new")
+
+
+def cmd_update_provider(manager: ConfigManager, args, provider: str = None, force: bool = None):
     """Actualizar un provider específico usando la caché (NO escanea en tiempo real).
 
     Args:
         manager: Instancia de ConfigManager
         args: Argumentos del parser
         provider: Nombre del provider a actualizar (si se proporciona, ignora args.provider)
+        force: Sobrescribir las claves que ocm gestiona aunque ya existan
     """
     manager.load_config()
     manager.load_cache()
 
-    # Usar provider si se proporciona, de lo contrario verificar args
-    if provider:
-        pass  # Ya tenemos el provider
-    elif hasattr(args, 'provider') and args.provider:
-        provider = args.provider
-    else:
-        provider = None
+    if force is None:
+        force = bool(getattr(args, "force", False))
 
-    model = manager.config_data.get("model")
+    requested = provider or getattr(args, "provider", None)
 
-    # Verificar si tenemos provider para actualizar
-    if not provider:
+    if not requested:
         ConfigUI.print_error("No hay provider configurado ni especificado.")
         print("Uso: ocm update [PROVIDER]")
-        print("Proveedores disponibles en caché:")
-        for p in manager.cache_data.get("providers", {}).keys():
-            print(f"  - {p}")
+        _print_cache_providers(manager)
         return
 
-    # Verificar si el provider existe en caché
-    if provider not in manager.cache_data.get("providers", {}):
-        ConfigUI.print_error(f"Provider '{provider}' no encontrado en caché.")
-        print("Ejecuta primero: ocm cache update {provider}")
-        print("Proveedores disponibles en caché:")
-        for p in manager.cache_data.get("providers", {}).keys():
-            print(f"  - {p}")
+    provider = _resolve_provider(requested, manager)
+    if not provider:
+        ConfigUI.print_error(f"Provider '{requested}' no encontrado en caché.")
+        print("Ejecuta primero: ocm cache update <PROVIDER>")
+        _print_cache_providers(manager, requested)
         return
 
-    # Obtener datos de caché (NO escanear en tiempo real)
     cache_info = manager.cache_data["providers"][provider]
-    cache_models = cache_info.get("models", [])
-    cached_model = cache_models[0] if cache_models else None
-    base_url = cache_info.get("baseUrl", "http://127.0.0.1:11434")
-    last_scan = cache_info.get("last_scan", 0)
+    # Si alguien puso opciones a mano en opencode.json, se adoptan a la caché para
+    # que 'ocm update' no las trate como inexistentes
+    if refresh_cache_from_config(manager, provider):
+        manager.save_cache(touch=False)
+    models = normalize_models(cache_info.get("models"))
 
-    # Mostrar estado actual desde caché
     print(f"\n=== Provider: {provider} ===")
-    print(f"Modelos en caché: {len(cache_models)}")
+    if cache_info.get("uid"):
+        print(f"UID: {cache_info['uid']}")
+    print(f"URL base: {cache_info.get('baseUrl', 'N/A')}")
+    print(f"Modelos en caché: {len(models)}")
+    last_scan = cache_info.get("last_scan", 0)
     print(f"Último escaneo: {datetime.fromtimestamp(last_scan) if last_scan else 'N/A'}")
 
-    # Verificar si hay modelos en caché
-    if not cache_models:
+    if not models:
         ConfigUI.print_error("No hay modelos en caché para este provider.")
-        print("Ejecuta primero: ocm cache update {provider}")
+        print(f"Ejecuta primero: ocm cache update {provider}")
+        return
+
+    if provider_needs_rescan(cache_info):
+        ConfigUI.print_warning(
+            "Este provider ya no está accesible en la URL guardada; "
+            f"usa 'ocm new {provider}' para corregir la URL antes de actualizar."
+        )
+
+    provider_type = get_provider_type(provider, manager)
+    desired = build_provider_config(provider, cache_info, provider_type)
+
+    configured = manager.config_data.get("provider")
+    raw = configured.get(provider) if isinstance(configured, dict) else None
+    if raw is not None and not isinstance(raw, dict):
+        ConfigUI.print_error(f"'provider.{provider}' no es un objeto JSON; "
+                             "arreglalo antes de actualizar (ocm config validate).")
+        return
+
+    existing = provider_entry_from_config(manager, provider)
+    merged, changes = merge_provider_config(existing, desired, force=force)
+
+    if not changes:
+        ConfigUI.print_success(f"Provider '{provider}' ya está al día. No hay cambios.")
         return
 
     # Crear backup ANTES de modificar
     backup_path = create_backup(manager.config_path, provider_name=provider)
     if backup_path:
-        print(f"\n[BACKUP] Creado en: {backup_path}")
+        print(f"[BACKUP] Creado en: {backup_path}")
 
-    # Generar configuración compatible con opencode.ai usando datos de caché
-    # El campo 'provider' debe ser el TIPO (ollama, anthropic, etc.), no el nombre
-    provider_type = get_provider_type(provider, manager)
-    model_name = cache_models[0] if cache_models else (model or cached_model or "unknown")
-    model_id = f"{provider_type}/{model_name}"
-
-    # Limpiar campos no compatibles
-    for key in ["temperature", "maxTokens", "models", "providers"]:
-        manager.config_data.pop(key, None)
-
-    # Actualizar provider específico manteniendo los demás
-    provider_config = sanitize_config_for_opencode(
-        provider_type=provider_type,
-        provider_name=provider,
-        model_name=model_name,
-        base_url=base_url,
-        models_list=cache_models,
-        api_key=cache_info.get("apiKey")
-    )
-
-    # Conservar providers existentes
-    existing_providers = manager.config_data.get("provider", {})
-    if isinstance(existing_providers, dict):
-        # Unir providers existentes con el nuevo
-        merged_providers = {**existing_providers, provider: provider_config}
-        manager.config_data["provider"] = merged_providers
-    else:
-        manager.config_data["provider"] = {provider: provider_config}
-
-    # Eliminar campo model (no es necesario, los modelos están en provider.X.models)
-    manager.config_data.pop("model", None)
-
-    # Asegurar que el schema exista
+    providers = manager.config_data.get("provider")
+    if not isinstance(providers, dict):
+        providers = {}
+    providers[provider] = merged
+    manager.config_data["provider"] = providers
     manager.config_data["$schema"] = "https://opencode.ai/config.json"
 
     try:
         manager.save_config()
-        ConfigUI.print_success(f"Provider {provider} actualizado en {manager.config_path}")
-        print(f"Modelos disponibles:")
-        for m in cache_models:
-            print(f"  - {m}")
     except Exception as e:
         ConfigUI.print_error(f"No se pudo guardar la configuración: {e}")
         if backup_path:
-            print(f"\n[RECOVER] Restaurando backup: {backup_path}")
+            print(f"[RECOVER] Restaurando backup: {backup_path}")
             shutil.copy2(backup_path, manager.config_path)
             ConfigUI.print_success("Configuración restaurada correctamente.")
         return
+
+    ConfigUI.print_success(f"Provider '{provider}' actualizado en {manager.config_path}")
+    print(f"Cambios aplicados ({len(changes)}):")
+    for change in changes:
+        print(f"  {Colors.BRIGHT_GREEN}+{Colors.RESET} {change}")
+    if not force:
+        print(f"\n{Colors.CYAN}ocm solo añade: las claves existentes se respetan. "
+              f"Usa 'ocm update {provider} --force' para sobrescribir las que gestiona ocm."
+              f"{Colors.RESET}")
+
+    print("Modelos disponibles:")
+    for model_id, entry in models.items():
+        name = entry.get("name") or model_id
+        limit = entry.get("limit") or {}
+        extra = ""
+        if limit.get("context"):
+            extra += f"  ctx={limit['context']}"
+        modalities = (entry.get("modalities") or {}).get("input")
+        if modalities:
+            extra += f"  in={','.join(modalities)}"
+        marker = "" if name == model_id else f" -> {name}"
+        print(f"  - {model_id}{marker}{extra}")
 
 
 def cmd_update_global(manager: ConfigManager, args):
@@ -128,8 +177,9 @@ def cmd_update_global(manager: ConfigManager, args):
     manager.load_config()
     manager.load_cache()
 
-    # Si no se especificó un provider, actualizar TODOS los providers en caché
-    if not hasattr(args, 'provider') or not args.provider:
+    provider = getattr(args, "provider", None)
+
+    if not provider:
         if manager.cache_data.get("providers"):
             ConfigUI.print_info("No se especificó provider. Actualizando todos los providers en caché...")
             providers_to_update = list(manager.cache_data["providers"].keys())
@@ -149,32 +199,20 @@ def cmd_update_global(manager: ConfigManager, args):
             ConfigUI.print_error("No hay providers en caché para actualizar.")
             return
 
-    # Si se especificó un provider, usarlo
-    provider = args.provider
-
-    # Si el provider por nombre no existe en caché, buscar por tipo
-    if provider not in manager.cache_data.get("providers", {}):
-        # Obtener el tipo del provider
+    # Resolver por nombre o uid; si no existe, buscar por tipo
+    resolved = _resolve_provider(provider, manager)
+    if not resolved:
         provider_type = get_provider_type(provider, manager)
-
-        # Buscar en caché por tipo
-        found_provider = None
         for cache_name, cache_info in manager.cache_data.get("providers", {}).items():
-            # Verificar si este provider en caché tiene el mismo tipo
             if get_provider_type(cache_name, manager) == provider_type:
-                found_provider = cache_name
+                resolved = cache_name
+                ConfigUI.print_info(f"Usando provider encontrado en caché: {resolved} (tipo: {provider_type})")
                 break
 
-        if found_provider:
-            provider = found_provider
-            ConfigUI.print_info(f"Usando provider encontrado en caché: {provider} (tipo: {provider_type})")
-        else:
-            ConfigUI.print_error(f"Provider '{provider}' no encontrado en caché.")
-            print("Ejecuta primero: ocm cache update {provider}")
-            print("Proveedores disponibles en caché:")
-            for p in manager.cache_data.get("providers", {}).keys():
-                print(f"  - {p} (tipo: {get_provider_type(p, manager)})")
-            return
+    if not resolved:
+        ConfigUI.print_error(f"Provider '{provider}' no encontrado en caché.")
+        print("Ejecuta primero: ocm cache update <PROVIDER>")
+        _print_cache_providers(manager)
+        return
 
-    # Ahora ejecutar cmd_update_provider con el provider correcto
-    cmd_update_provider(manager, args, provider=provider)
+    cmd_update_provider(manager, args, provider=resolved)
