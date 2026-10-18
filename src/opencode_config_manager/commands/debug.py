@@ -6,6 +6,7 @@ import json
 
 from ..config import ConfigManager, ConfigUI
 from ..cache_models import MANAGED_MODEL_FIELDS
+from .encoded import format_notes
 
 # Claves de provider aceptadas por opencode según la clave raíz
 PROVIDER_KEYS = {"api", "name", "env", "id", "npm", "whitelist", "blacklist",
@@ -30,6 +31,27 @@ KEY_HINTS = {
 }
 
 
+# Claves de un formato que estan mal colocadas en el otro
+FORMAT_HINTS_SINGULAR = {
+    "capabilities": "en 'provider' las capacidades son 'tool_call', 'reasoning' y 'modalities'",
+    "modelID": "en 'provider' el id es la clave del modelo (o 'id')",
+    "releaseDate": "en 'provider' es 'release_date'",
+    "compatibility": "no existe en 'provider'; usa 'options'",
+    "canonical": "'canonical' es del formato 'providers'",
+}
+
+FORMAT_HINTS_ENCODED = {
+    "tool_call": "en 'providers' va en 'capabilities.tools'",
+    "toolcall": "en 'providers' va en 'capabilities.tools'",
+    "modalities": "en 'providers' va en 'capabilities.input' y 'capabilities.output'",
+    "temperature": "en 'providers' va en 'capabilities.temperature'",
+    "release_date": "en 'providers' es 'releaseDate'",
+    "attachment": "no existe en 'providers'; usa 'capabilities.input'",
+    "interleaved": "no existe en 'providers'; prueba en 'settings' o 'variants'",
+    "provider": "no existe en 'providers'; el paquete se fija con 'package'",
+}
+
+
 def _hint(key: str, encoded: bool):
     """Pista para una clave mal colocada, según el formato ('provider' o 'providers')."""
     container = "settings" if encoded else "options"
@@ -47,7 +69,8 @@ def _hint(key: str, encoded: bool):
         return "en 'providers' se usa 'settings'"
     if key == "settings" and not encoded:
         return "en 'provider' se usa 'options'"
-    return KEY_HINTS.get(key)
+    extra = (FORMAT_HINTS_ENCODED if encoded else FORMAT_HINTS_SINGULAR).get(key)
+    return extra or KEY_HINTS.get(key)
 
 
 def _check_provider(pname: str, pconfig: dict, path: str, encoded: bool = False) -> list:
@@ -84,11 +107,44 @@ def _check_provider(pname: str, pconfig: dict, path: str, encoded: bool = False)
             notes.append(f"{path}.models.{mid}: clave no reconocida '{key}'"
                          + (f" ({hint})" if hint else ""))
 
+        if encoded:
+            caps = entry.get("capabilities")
+            if isinstance(caps, dict):
+                for flag in ("tools", "temperature"):
+                    if flag in caps and not isinstance(caps[flag], bool):
+                        notes.append(f"{path}.models.{mid}: 'capabilities.{flag}' "
+                                     "debe ser true/false")
+                if "reasoning" in caps and not isinstance(caps["reasoning"], (bool, dict)):
+                    notes.append(f"{path}.models.{mid}: 'capabilities.reasoning' debe ser "
+                                 "true/false u objeto")
+                for side in ("input", "output"):
+                    if side not in caps:
+                        continue
+                    value = caps[side]
+                    if not isinstance(value, list):
+                        notes.append(f"{path}.models.{mid}: 'capabilities.{side}' debe ser "
+                                     "una lista de modalidades")
+                        continue
+                    for item in value:
+                        if item not in MODALITIES:
+                            notes.append(f"{path}.models.{mid}: modalidad '{side}' no valida: "
+                                         f"'{item}'")
+            elif entry.get("capabilities") is not None:
+                notes.append(f"{path}.models.{mid}: 'capabilities' debe ser un objeto")
+
+            variants = entry.get("variants")
+            if isinstance(variants, dict):
+                notes.append(f"{path}.models.{mid}: en 'providers' 'variants' es una lista "
+                             "de objetos con 'id' y 'settings'")
+
         limit = entry.get("limit")
         if isinstance(limit, dict) and not {"context", "output"} <= set(limit):
             notes.append(f"{path}.models.{mid}: 'limit' debería incluir 'context' y 'output'")
 
         modalities = entry.get("modalities")
+        if not encoded and isinstance(entry.get("variants"), list):
+            notes.append(f"{path}.models.{mid}: en 'provider' 'variants' es un objeto cuya "
+                         "clave es el id de la variante")
         if isinstance(modalities, dict):
             for side in ("input", "output"):
                 for value in modalities.get(side) or []:
@@ -166,6 +222,9 @@ def validate_config(config_data: dict) -> tuple[bool, list[str], list[str]]:
         "tools", "attachment",
         "theme", "tui", "keybinds", "ollama",
     }
+    # Convivencia de los dos bloques: 'provider' (el que registra providers) y 'providers'
+    warnings.extend(format_notes(config_data))
+
     unknown_fields = [key for key in config_data.keys() if key not in valid_top_level_fields]
     for key in unknown_fields:
         warnings.append(f"Campo no reconocido en schema de opencode: '{key}'")

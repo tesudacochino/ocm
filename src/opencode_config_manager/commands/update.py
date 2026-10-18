@@ -13,6 +13,7 @@ from datetime import datetime
 
 from ..config import ConfigManager, ConfigUI, Colors
 from ..cache_models import normalize_models, provider_needs_rescan
+from .encoded import encoded_entry, encoded_providers, print_encoded_notice
 from .utils import (
     build_provider_config,
     create_backup,
@@ -50,6 +51,12 @@ def _print_cache_providers(manager: ConfigManager, requested: str = None):
             print(f"  - {name} (uid: {uid}, {count} modelos)")
     else:
         print("La caché está vacía. Ejecuta: ocm new")
+
+    solo_plural = [name for name in encoded_providers(manager) if name not in providers]
+    if solo_plural:
+        print("Providers que solo están en 'providers' (opencode no los llega a registrar):")
+        for name in solo_plural:
+            print(f"  - {name}   →  ocm config to-singular {name}")
 
 
 def cmd_update_provider(manager: ConfigManager, args, provider: str = None, force: bool = None):
@@ -96,6 +103,12 @@ def cmd_update_provider(manager: ConfigManager, args, provider: str = None, forc
     print(f"Modelos en caché: {len(models)}")
     last_scan = cache_info.get("last_scan", 0)
     print(f"Último escaneo: {datetime.fromtimestamp(last_scan) if last_scan else 'N/A'}")
+
+    if encoded_entry(manager, provider):
+        ConfigUI.print_warning(
+            f"'{provider}' también tiene una entrada en 'providers' (el formato codificado "
+            "de v2): opencode hace caso a la de 'provider'. Mira 'ocm config to-singular'."
+        )
 
     if not models:
         ConfigUI.print_error("No hay modelos en caché para este provider.")
@@ -194,6 +207,7 @@ def cmd_update_global(manager: ConfigManager, args):
                     continue
 
             ConfigUI.print_success(f"Actualizados {updated_count}/{len(providers_to_update)} providers")
+            print_encoded_notice(manager)
             return
         else:
             ConfigUI.print_error("No hay providers en caché para actualizar.")

@@ -10,6 +10,7 @@ from ..api import ProviderScanner
 from ..cache_models import ensure_uid, normalize_models
 from ..model_fields import describe_model
 from .configure import ask_api_style_fields
+from .encoded import print_encoded_notice
 from .options import configure_model_entry
 from .utils import displayify, provider_entry_from_config
 
@@ -321,10 +322,13 @@ def cmd_provider_list(manager: ConfigManager, args):
     if not providers or not isinstance(providers, dict):
         print("No hay providers configurados en opencode.json.")
         print("Ejecuta: ocm update [PROVIDER]")
+        print_encoded_notice(manager)
         return
 
     for provider_name, provider_config in providers.items():
         print_provider_config_info(provider_name, provider_config)
+
+    print_encoded_notice(manager)
 
 
 def cmd_provider_remove(manager: ConfigManager, args):

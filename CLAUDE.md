@@ -31,6 +31,7 @@ opencodeconfig/
 │       ├── model.py           # model list / name / rm / rename
 │       ├── options.py         # model options / show: asistente campo a campo
 │       ├── configure.py       # ocm configure: reconfigura el provider completo
+│       ├── encoded.py         # bloque plural 'providers': detectar, leer, validar, migrar
 │       ├── scan.py            # scan, scan_single_provider
 │       ├── update.py          # update provider/global
 │       ├── cache.py           # cache show/clear
@@ -120,6 +121,29 @@ opencodeconfig/
 - `_prune_gone_models()`: unicos lugares, junto a `ocm model rm`, donde se borra
   un modelo de `opencode.json`; siempre con confirmacion previa
 
+**`commands/encoded.py`** - El bloque plural `providers` (formato codificado de v2):
+- **Comprobado en opencode 2.0.32**: un provider que solo esta en `providers` no se
+  registra (no aparece en `opencode models`), aunque lleve `package`/`settings`/
+  `canonical`. Por eso ocm escribe solo la forma singular; aqui nos limitamos a
+  leer, validar y migrar el plural
+- `format_notes(config_data)` → avisos de convivencia (en los dos bloques / solo en
+  el plural); lo usan `debug.validate_config`, `provider.cmd_provider_list` y
+  `update.cmd_update_global`
+- `model_from_encoded()` / `provider_from_encoded()` → traducen al formato singular:
+  `package`→`npm`, `settings`→`options`, `headers`→`options.headers`,
+  `capabilities.tools`→`tool_call`, `capabilities.input/output`→`modalities`,
+  `capabilities.temperature`→`temperature`, `releaseDate`→`release_date`,
+  `modelID`→`id`, `variants:[{id,settings}]`→`variants:{id:{...}}`.
+  `canonical`, `compatibility`, `body` y `disabled` no cabe en el singular: se
+  devuelven en `notes` y se pierden
+- `cache_entry_from_encoded()` → entrada de caché equivalente (el `provider_type` se
+  infiere del paquete con `PACKAGE_TYPES` si no viene confirmado)
+- `cmd_config_to_singular()` → `ocm config to-singular`: reutiliza
+  `merge_provider_config` (no pisa nada sin `--force`), crea backup, mete el
+  provider en la caché y ofrece quitar el bloque plural (`--drop`/`--keep`)
+- Clave del formato singular: `tool_call` (el esquema solo conoce esa forma;
+  `toolcall` es de models.dev y opencode la ignora en silencio, sin error)
+
 **`cli.py`** - Parser + dispatch (~130 líneas):
 - Define argumentos con argparse
 - Dispatch a funciones en `commands/`
@@ -129,6 +153,7 @@ opencodeconfig/
 - `model.py`: `model list|name|rm`, `rename`
 - `options.py`: `model options|show` (asistente de opciones)
 - `configure.py`: `ocm configure` (asistente de provider + poda)
+- `encoded.py`: bloque plural `providers` (deteccion, traduccion, `config to-singular`)
 - `scan.py`: escaneo de APIs
 - `update.py`: actualización de `opencode.json`
 - `cache.py`: gestión de caché
@@ -160,6 +185,12 @@ user → ocm configure  → refresh_cache_from_config() (adopta lo escrito a man
 
 user → ocm model rm   → unico camino que borra un modelo (caché + opencode.json),
                        con confirmacion y backup
+
+user → ocm config to-singular
+                     → provider_from_encoded(): traduce el bloque 'providers'
+                     → merge_provider_config() sobre 'provider' (no pisa sin --force)
+                     → cache_entry_from_encoded(): deja el provider en la caché
+                     → ofrece quitar lo migrado de 'providers' (--drop/--keep)
 ```
 
 ## Comandos principales
@@ -187,7 +218,9 @@ ocm cache rm NAME                # Eliminar provider de caché
 ocm cache clear                  # Borrar toda la caché
 
 # Configuración avanzada
-ocm config validate              # Validar opencode.json
+ocm config validate              # Validar opencode.json (ambos formatos)
+ocm config to-singular [P]       # Migrar del bloque plural 'providers' al singular
+                                 #   --dry-run | --force | --drop | --keep | -y
 
 # Via uv
 uv run opencode-config-manager --help
@@ -257,6 +290,14 @@ uv run opencode-config-manager --help
 3. `npm` solo se fija al crear el provider (no se pisa un SDK elegido a mano).
 4. Se crea backup rotativo antes de escribir (`create_backup`, máx. 10).
 5. `ocm update` no escribe el campo `model` ni el bloque `providers` (plural, v2).
+   Se decide asi por evidencia: en opencode 2.0.32 un provider que solo esta en
+   `providers` **no se registra** (no sale en `opencode models`), mientras que la
+   forma singular si funciona; escribir el plural seria dejar al usuario con un
+   provider inoperativo. El bloque plural se lee, se valida y se migra con
+   `ocm config to-singular` (nico sitio, con `--drop`, donde se toca para borrar).
+6. Los comandos que son accion explicita del usuario (`ocm configure`, `ocm rename`,
+   `ocm model rm`, `ocm config to-singular`) escriben en `opencode.json` en el
+   momento, con backup previo y sin tocar claves que no les pertenecen.
 
 ## Paths por defecto
 

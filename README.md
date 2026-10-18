@@ -20,7 +20,15 @@ Requiere Python 3.10+ y [uv](https://docs.astral.sh/uv/):
 git clone https://github.com/tesudacochino/ocm.git
 cd ocm
 uv sync
+
+# Los ejecutables quedan dentro del entorno:
+uv run ocm --version
+uv run ocm new
 ```
+
+> Hasta la 1.1.1 el paquete registraba también un comando `opencode`, que tapaba
+> al CLI real de opencode. Si vienes de una instalación antigua, recrea el venv
+> (`Remove-Item -Recurse .venv` / `rm -rf .venv`) al actualizar.
 
 ## Uso rápido
 
@@ -72,7 +80,9 @@ ocm rename mole                    # Cambiar el nombre visible del provider
 
 | Comando | Descripción |
 |---------|-------------|
-| `ocm config validate` | Validar integridad de `opencode.json` |
+| `ocm config validate` | Validar integridad de `opencode.json` (los dos formatos) |
+| `ocm config to-singular [nombre]` | Migrar providers del bloque plural `providers` al singular |
+| `ocm config to-singular --dry-run` | Ver qué migraría, sin escribir |
 
 ### Opciones globales
 
@@ -342,8 +352,48 @@ por defecto (la clave `"model"` de opencode.json).
 
 ### El formato nuevo de opencode v2 (`providers`, en plural)
 
-El esquema de opencode marca `provider` (singular) como *deprecated* aunque sigue
-funcionando, y añade `providers` (plural) con otra forma:
+El esquema de opencode marca `provider` (singular) como *deprecated* y añade
+`providers` (plural) con otra forma, la "codificada" (`package`, `settings`,
+`capabilities`, `modelID`).
+
+**Comprobado sobre opencode 2.0.32: ese bloque plural no llega a registrar el
+provider.** Un provider que solo esté en `providers` no aparece en
+`opencode models`, le pongas `package`, `settings`, `env` o `canonical`. La
+forma que sí registra providers es la singular, así que **`ocm` escribe siempre
+`provider` (singular)** y del bloque plural solo hace lo útil:
+
+- lo **detecta**: `ocm list`, `ocm update` y `ocm config validate` te dicen qué
+  providers viven en `providers` y si algún id está duplicado en los dos bloques
+  (en ese caso opencode hace caso al singular),
+- lo **entiende**: `ocm model list <PROVIDER>` lista también los modelos que solo
+  están ahí, marcados como `solo 'providers'`,
+- lo **migra** a la forma que sí funciona, con `ocm config to-singular`.
+
+```bash
+ocm config to-singular                 # detecta y pregunta por todos los que encuentre
+ocm config to-singular local-brain     # uno concreto
+ocm config to-singular --dry-run       # ver sin escribir
+ocm config to-singular --drop          # además quita del plural lo ya migrado
+ocm config to-singular --keep          # y además lo deja también en el plural
+ocm config to-singular --force         # sobrescribir claves existentes (por defecto no)
+```
+
+La migración traduce `package`→`npm`, `settings`→`options`, `headers`→`options.headers`,
+y por modelo `capabilities.tools`→`tool_call`, `capabilities.input/output`→`modalities`,
+`capabilities.temperature`→`temperature`, `releaseDate`→`release_date`,
+`modelID`→`id` y `variants: [{id,settings}]`→`variants: {id:{...}}`. Crea backup,
+mete el provider en la caché (para que `ocm update` lo mantenga) y **no pisa nada
+que ya existiera** salvo `--force`. `canonical`, `compatibility`, `body` y
+`disabled` no tienen sitio en el formato singular: se avisan y se pierden.
+
+Detalle sobre las capacidades: la clave del formato singular es **`tool_call`**
+(así aparece en el esquema oficial; `toolcall` es del catálogo de models.dev y
+opencode la ignora en silencio). Ojo, que opencode tampoco rechaza las claves
+desconocidas en tiempo de ejecución: si escribes `toolcall` te quedas sin la
+capacidad y sin aviso. Por eso `ocm` escribe los nombres del esquema y
+`ocm config validate` te caza los que están mal colocados.
+
+La forma codificada, para referencia (esto **no** registra el provider en 2.0.32):
 
 ```json
 {
@@ -375,8 +425,9 @@ Errores frecuentes al escribirlo a mano (los detecta `ocm config validate`):
 | `"input": ["text", "image"]` en el modelo | `"modalities": { "input": [...] }` (o `"capabilities"` en plural) |
 | `"thinkingLevelMap": {...}` | no existe; usa `"variants"` con `"settings"` |
 
-`ocm` escribe siempre en `provider` (singular, el formato documentado) y **no toca**
-un bloque `providers` que ya exista en tu archivo.
+`ocm` escribe siempre en `provider` (singular, el formato que de verdad registra
+providers). El bloque `providers` que ya exista en tu archivo no lo toca nadie: solo
+`ocm config to-singular --drop` lo limpia, y te lo pide antes.
 
 ## Estructura de archivos
 

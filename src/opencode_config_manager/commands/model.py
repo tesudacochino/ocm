@@ -9,6 +9,7 @@ y son los que usan el asistente de reconfiguración.
 from ..config import ConfigManager, ConfigUI, Colors
 from ..cache_models import normalize_models, set_model_option
 from ..model_fields import describe_model
+from .encoded import encoded_entry, encoded_providers, provider_from_encoded
 from .utils import (
     create_backup,
     provider_entry_from_config,
@@ -39,14 +40,21 @@ def _pick_from_list(items: list, label: str):
         ConfigUI.print_warning("Numero fuera de rango.")
 
 
-def resolve_provider(manager: ConfigManager, provider: str = None) -> str:
-    """Resolver el provider por argumento o preguntando entre los conocidos."""
+def resolve_provider(manager: ConfigManager, provider: str = None,
+                     extra_names=None) -> str:
+    """Resolver el provider por argumento o preguntando entre los conocidos.
+
+    Args:
+        extra_names: nombres adicionales a ofrecer, para los providers que solo
+            existen en el bloque 'providers' y aun asi se quieren listar.
+    """
     manager.load_cache()
     manager.load_config()
 
     names = sorted(set(manager.cache_data.get("providers", {})) |
                    set(k for k, v in (manager.config_data.get("provider", {}) or {}).items()
-                       if isinstance(v, dict)))
+                       if isinstance(v, dict)) |
+                   set(extra_names or []))
 
     if provider:
         if provider in names:
@@ -81,7 +89,9 @@ def _sync_config_name(manager: ConfigManager, provider: str, model_id: str, name
 
 def cmd_model_list(manager: ConfigManager, args):
     """Listar los modelos de un provider con su nombre visible y opciones."""
-    provider = resolve_provider(manager, getattr(args, "provider", None))
+    manager.load_config()
+    provider = resolve_provider(manager, getattr(args, "provider", None),
+                                extra_names=list(encoded_providers(manager)))
     if not provider:
         return
 
@@ -94,6 +104,22 @@ def cmd_model_list(manager: ConfigManager, args):
 
     models = normalize_models(cache_info.get("models"))
     configured = provider_entry_from_config(manager, provider).get("models", {}) or {}
+
+    # Si no tiene nada en el formato singular, igual vive en 'providers' (v2 codificado)
+    solo_plural = False
+    if not models and not configured:
+        enc = encoded_entry(manager, provider)
+        if enc:
+            desired, notes = provider_from_encoded(provider, enc)
+            configured = desired.get("models") or {}
+            solo_plural = bool(configured)
+            ConfigUI.print_warning(
+                f"'{provider}' esta definido en 'providers', el formato codificado de v2. "
+                "Opencode 2.0.x no llega a registrar estos modelos; pasalos a la forma "
+                f"singular con: ocm config to-singular {provider}"
+            )
+            for note in notes[:4]:
+                ConfigUI.print_warning(note)
 
     if not models and not configured:
         print("No hay modelos en caché para este provider.")
@@ -109,7 +135,10 @@ def cmd_model_list(manager: ConfigManager, args):
         if not isinstance(entry, dict):
             entry = {}
         name = entry.get("name") or model_id
-        where = "si" if model_id in configured else "no"
+        if solo_plural:
+            where = "solo 'providers'"
+        else:
+            where = "si" if model_id in configured else "no"
         print(f"{model_id:<36} {('' if name == model_id else name):<26} "
               f"{describe_model(entry).strip():<34} {where}")
 

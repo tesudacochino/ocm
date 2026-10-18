@@ -30,6 +30,7 @@ from .commands.model import (
     cmd_provider_rename,
 )
 from .commands.configure import cmd_configure
+from .commands.encoded import cmd_config_to_singular
 from .commands.options import cmd_model_options, cmd_model_show
 from .commands.debug import cmd_debug_config
 
@@ -59,6 +60,7 @@ Ejemplos:
   ocm configure [PROVIDER]       # Reconfigurar un provider (nombre, URL, key, modelos)
   ocm rename [PROVIDER]          # Renombrar el nombre visible de un provider
   ocm config validate              # Validar integridad de la configuración
+  ocm config to-singular [PROVIDER]  # Migrar providers del bloque plural 'providers'
 
 Flujo típico:
   ocm new  →  ocm cache update  →  ocm update  →  ocm list
@@ -170,6 +172,21 @@ Flujo típico:
     config_sub = config_parser.add_subparsers(dest="config_command", help="Comandos de configuración")
     config_sub.add_parser("validate", help="Validar integridad de la configuración")
 
+    config_to_single = config_sub.add_parser(
+        "to-singular", aliases=["to-single", "migrate"],
+        help="Pasar providers del bloque plural 'providers' al bloque 'provider'")
+    config_to_single.add_argument("provider", nargs="?", help="Provider concreto (opcional)")
+    config_to_single.add_argument("--dry-run", action="store_true",
+                                  help="Enseñar qué haría, sin escribir nada")
+    config_to_single.add_argument("--force", action="store_true",
+                                  help="Sobrescribir las claves que ya existan en 'provider'")
+    config_to_single.add_argument("--drop", action="store_true",
+                                  help="Quitar de 'providers' lo migrado, sin preguntar")
+    config_to_single.add_argument("--keep", action="store_true",
+                                  help="Dejar intactas las entradas migradas de 'providers'")
+    config_to_single.add_argument("--yes", "-y", action="store_true",
+                                  help="No pedir confirmación al migrar varios")
+
     # ── Alias oculto: debug config → config validate ─────────────────
     debug_parser = subparsers.add_parser("debug")
     debug_sub = debug_parser.add_subparsers(dest="debug_command")
@@ -258,8 +275,10 @@ def main(args: list = None):
         sub = getattr(parsed_args, "config_command", None)
         if sub == "validate":
             cmd_debug_config(manager, parsed_args)
+        elif sub in ("to-singular", "to-single", "migrate"):
+            cmd_config_to_singular(manager, parsed_args)
         else:
-            print("Uso: ocm config validate")
+            print("Uso: ocm config validate | ocm config to-singular [PROVIDER]")
             return 1
 
     # ── Alias oculto: debug config ───────────────────────────────────
