@@ -17,6 +17,7 @@ Este modulo normaliza ambas formas al leer y migra la caché en memoria al
 formato v2 (ver `migrate_cache`).
 """
 
+import time
 import uuid
 
 from .model_fields import canonical_key
@@ -177,6 +178,24 @@ def provider_needs_rescan(cache_entry: dict) -> bool:
     actualizandose con los modelos de la ultima pasada correcta.
     """
     return bool(cache_entry) and cache_entry.get("reachable") is False
+
+
+DIAS_SCAN = 7
+
+
+def scan_desactualizado(cache_entry: dict, dias: int = DIAS_SCAN) -> bool:
+    """True si hace demasiado que no se escanea el provider.
+
+    Lo usa el asistente de `ocm configure` para volver a mirar el servidor: es la
+    unica forma de enterarse de que detras de la misma URL hay ahora otro motor,
+    de que han subido el contexto o de que ha aparecido un modelo nuevo.
+    """
+    if not cache_entry:
+        return False
+    ultimo = cache_entry.get("last_scan")
+    if not isinstance(ultimo, (int, float)) or ultimo <= 0:
+        return True
+    return (time.time() - ultimo) > dias * 86400
 
 
 def adopt_model_options(cache_entry: dict, config_models: dict) -> bool:

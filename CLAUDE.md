@@ -41,7 +41,9 @@ opencodeconfig/
 ├── tests/                      # Regresiones: test_fase_a..h.py (scripts sueltos) + entorno.py
 ├── scripts/
 │   ├── ccl                    # Wrapper Linux/macOS
-│   └── ccl.bat                # Wrapper Windows
+│   ├── ccl.bat                # Wrapper Windows
+│   ├── set_version.py         # Dejar la version en un solo punto
+│   └── qa_flujos.py           # QA end-to-end de los dos flujos del asistente
 ├── opencode-config-manager.spec # PyInstaller config
 ├── install.sh, install.bat     # Script instalación
 ├── build.sh, build.bat         # Script compilación
@@ -100,6 +102,9 @@ servidor en el ultimo escaneo). Reglas en `scan_single_provider`:
   `capabilities.{tools,reasoning,input,output,vision}`, `input`/`output` sueltos
   → `modalities.*` (usa `model_fields.canonical_key`)
 - `adopt_model_options()` rellena en la caché lo que solo existe en opencode.json
+- `provider_needs_rescan()` dice si el ultimo escaneo no contactó (lo usa `update`,
+  que avisa sin reescanear); `scan_desactualizado()` suma `DIAS_SCAN` (7 dias) y es la
+  que hace que `ocm configure` ofrezca el escaneo de comprobación del motor
 
 **`commands/utils.py`** - Escritura de `opencode.json`:
 - `build_provider_config()` → config "deseada" desde la caché
@@ -152,7 +157,8 @@ servidor en el ultimo escaneo). Reglas en `scan_single_provider`:
   servidor no confirmo
 - `Explorador` pide `GET /props` y `POST /api/show` **una vez por provider**, no por
   modelo; el `/api/show` se intenta con `{"name":...}` y con `{"model":...}` porque
-  cada clon de ollama espera uno distinto
+  cada clon de ollama espera uno distinto. Su `parameters` se acepta en cadena JSON
+  (lo que manda ollama) y ya como objeto (algunos clones), de ahí sale `limit.context`
 - Orden de las fuentes: endpoints del servidor (`_desde_entrada`, `_desde_props`,
   `_desde_show`) → registro de opencode (`_indice_registro`, que cachea por mtime
   `~/.cache/opencode/models.json`) → `_desde_nombre`, que marca lo suyo como

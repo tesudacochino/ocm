@@ -57,6 +57,11 @@ día cambia el motor de inferencia que hay detrás.
   11434—, así que se miran `owned_by`, `details.format`, el `model_path` de `/props` y
   la forma de `/api/tags`; si ningún modelo deja pista, no se dice nada. Es un dato de
   la caché: opencode no lo lee.
+- `ocm configure` ofrece un **escaneo de comprobación** cuando hace más de siete días
+  que no se escanea el provider (antes sólo lo ofrecía si estaba caído o si cambiabas
+  la URL). Es lo que hace falta para que un provider ya configurado se entere de que
+  detrás de la misma dirección hay ahora otro motor, de que han subido el contexto o
+  de que ha aparecido un modelo nuevo. El umbral está en `cache_models.DIAS_SCAN`.
 
 - `ocm model info [PROVIDER] [MODELO]`: ficha en claro de un modelo —nombre visible,
   dónde está (caché, bloque singular o bloque plural), URL, API key mascada, último
@@ -108,6 +113,9 @@ día cambia el motor de inferencia que hay detrás.
   última pasada buena.
 - El escaneo respetaba el tipo de la caché a ciegas: si estaba mal dicho, nunca se
   recuperaba. Ahora cae al otro endpoint automáticamente.
+- `POST /api/show` de ollama manda `parameters` como cadena JSON, y era lo único que
+  se entendía; los servidores compatibles que lo devuelven ya como objeto dejaban el
+  contexto de tokens sin detectar. Se aceptan las dos formas.
 
 ## [2.0.0] - 2026-10-18
 

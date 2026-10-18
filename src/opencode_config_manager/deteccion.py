@@ -365,19 +365,21 @@ def _desde_show(show, d, textos):
                 d.ofrecer("modalities.input", _con("image", "video"),
                           "POST /api/show (model_info)")
 
+    # ollama manda `parameters` como cadena JSON; otros servidores compatibles
+    # (lmstudio y algunos forks) la devuelven ya como objeto.
     parametros = show.get("parameters")
     if isinstance(parametros, str) and parametros.strip():
         try:
-            datos = json.loads(parametros)
+            parametros = json.loads(parametros)
         except ValueError:
-            datos = None
-        if isinstance(datos, dict):
-            for clave in ("num_ctx", "n_ctx", "context"):
-                if isinstance(datos.get(clave), int) and datos[clave] > 0:
-                    d.ofrecer("limit.context", datos[clave], "POST /api/show (parameters)")
-                    break
-            if datos.get("mmproj") or datos.get("clip_model_path"):
-                d.ofrecer("modalities.input", _con("image"), "POST /api/show (mmproj)")
+            parametros = None
+    if isinstance(parametros, dict):
+        for clave in ("num_ctx", "n_ctx", "context"):
+            if isinstance(parametros.get(clave), int) and parametros[clave] > 0:
+                d.ofrecer("limit.context", parametros[clave], "POST /api/show (parameters)")
+                break
+        if parametros.get("mmproj") or parametros.get("clip_model_path"):
+            d.ofrecer("modalities.input", _con("image"), "POST /api/show (mmproj)")
 
     detalles = show.get("details")
     if isinstance(detalles, dict):

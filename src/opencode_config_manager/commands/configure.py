@@ -16,7 +16,8 @@ Reglas de escritura (las mismas de los comandos de renombrado):
 import time
 
 from ..config import ConfigManager, ConfigUI, Colors
-from ..cache_models import normalize_models, provider_needs_rescan
+from ..cache_models import (DIAS_SCAN, normalize_models, provider_needs_rescan,
+                            scan_desactualizado)
 from .detect import merece_deteccion, proponer_en_asistente
 from .model import resolve_provider
 from .options import (
@@ -286,7 +287,9 @@ def _ask_rescan(manager: ConfigManager, provider: str, cache_info: dict,
     if url_or_key_changed:
         reason = "has cambiado la URL o la api key"
     elif provider_needs_rescan(cache_info):
-        reason = "el provider no esta accesible o hace tiempo que no se escanea"
+        reason = "el provider no esta accesible"
+    elif scan_desactualizado(cache_info):
+        reason = f"hace mas de {DIAS_SCAN} dias que no se escanea"
     else:
         return False
 

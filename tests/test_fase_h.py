@@ -18,6 +18,7 @@ import io
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -357,6 +358,60 @@ def scenario_motor_no_viaja(home: Path, config: Path):
           "H10: las cosas de ocm se quedan en la cache")
 
 
+def scenario_rescan_desactualizado(home: Path, config: Path):
+    """`ocm configure` vuelve a mirar el servidor cuando hace tiempo que no se escanea.
+
+    Es la unica forma de que un provider ya configurado se entere del cambio de motor,
+    de un contexto mas grande o de un modelo nuevo.
+    """
+    print("\n=== H11: con la cache vieja se ofrece reescanear ===")
+    preparar(home, config, modelos={"blando:1b": {"name": "Blando"}},
+             extra={"last_scan": 1700000000})
+    servidor = servidor_ollama()
+    servidor.instalar()
+    try:
+        # nombre | url | apiKey | tipo | escanear | guardar detectado | modelo a repasar
+        feed("", "", "", "", "y", "y", "")
+        salida = run_cap(home, config, "configure", "local", "--no-api-style", "--no-prune")
+    finally:
+        sys.stdin = sys.__stdin__
+        servidor.restaurar()
+    check("¿Escanear local ahora" in salida, "H11: la cache vieja ofrece un escaneo")
+    check("hace mas de 7 dias" in salida, "H11: y dice por que lo ofrece")
+
+    print("\n=== H11b: con el escaneo reciente no pregunta ===")
+    preparar(home, config, modelos={"blando:1b": {"name": "Blando"}},
+             extra={"last_scan": int(time.time())})
+    servidor = servidor_ollama()
+    servidor.instalar()
+    try:
+        feed("", "", "", "", "y", "")
+        salida = run_cap(home, config, "configure", "local", "--no-api-style", "--no-prune")
+    finally:
+        sys.stdin = sys.__stdin__
+        servidor.restaurar()
+    check("¿Escanear local ahora" not in salida,
+          "H11b: escaneado hace poco, no se molesta con el escaneo")
+
+
+def scenario_parameters():
+    """`parameters` de /api/show: ollama lo manda en cadena JSON, otros como objeto."""
+    print("\n=== H12: 'parameters' vale en las dos formas ===")
+    for bruto, esperado in (("{\"num_ctx\": 32768}", 32768), ({"n_ctx": 8192}, 8192),
+                            ('{"n_ctx": 4096}', 4096)):
+        d = deteccion.Deteccion()
+        deteccion._desde_show({"parameters": bruto}, d, [])
+        check(d.valores.get("limit.context") == esperado,
+              f"H12: parameters {type(bruto).__name__} -> contexto {esperado}")
+        check("(parameters)" in str(d.fuentes.get("limit.context", "")),
+              "H12: y la fuente queda clara")
+    for basura in ("texto suelto", {"num_ctx": "grande"}, {"num_ctx": 0}, None):
+        d = deteccion.Deteccion()
+        deteccion._desde_show({"parameters": basura}, d, [])
+        check("limit.context" not in d.valores,
+              f"H12: con 'parameters' raro ({type(basura).__name__}) no se inventa nada")
+
+
 def main_tests():
     escenarios = [
         ("new rellena y confirma", scenario_new_apply),
@@ -367,6 +422,7 @@ def main_tests():
         ("reconocer ollama", scenario_motor_ollama),
         ("ficha del motor", scenario_motor_ficha),
         ("configure", scenario_configure),
+        ("reescaneo por viejo", scenario_rescan_desactualizado),
         ("el motor no viaja", scenario_motor_no_viaja),
     ]
     for nombre, fn in escenarios:
@@ -378,6 +434,7 @@ def main_tests():
             shutil.rmtree(home, ignore_errors=True)
 
     scenario_merece()
+    scenario_parameters()
 
     fallidos = [etiqueta for ok, etiqueta in CHECKS if not ok]
     print(f"\n=== {len(CHECKS) - len(fallidos)}/{len(CHECKS)} checks OK ===")

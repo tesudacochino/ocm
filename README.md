@@ -488,7 +488,9 @@ la caché junto con la prueba de donde lo ha sacado:
 
 - Se comprueba en cada `ocm cache update` y al crear el provider, con lo que los
   endpoints ya han contestado; sólo si la lista no dice nada se gasta una petición
-  extra a `/props`.
+  extra a `/props`. `ocm configure` también lo repasa: si el provider lleva más de
+  siete días sin escanearse ofrece hacerlo, que es la forma de que un provider ya
+  configurado se entere de que detrás hay otro motor.
 - Si el motor que responde no es el que constaba, avisa: *«Ojo, el motor parece otro:
   en la caché constaba 'ollama' y ahora responde como 'vllm'»*, y deja la nota puesta
   para que la ficha de `ocm model info` lo recuerde hasta que el escaneo siguiente lo
@@ -532,6 +534,11 @@ Despues enseña la tabla de modelos, deja repasar uno (o `todos`) y, si hay
 modelos en `opencode.json` que ya no aparecen en el ultimo escaneo, **ofrece
 quitarlos** (con `n` se quedan como estaban).
 
+Antes de eso ofrece un **escaneo de comprobación** cuando toca: si has cambiado URL o
+api key, si el provider no está accesible, o si lleva más de siete días sin escanearse.
+Ahí es donde ocm se da cuenta del cambio de motor, del contexto nuevo o de los modelos
+que han aparecido.
+
 La api key nunca se muestra entera en pantalla: se ve `sk-1******3456`.
 
 | Flag | Para que |
@@ -540,7 +547,7 @@ La api key nunca se muestra entera en pantalla: se ve `sk-1******3456`.
 | `--model MODELO` | ir directamente a las opciones de ese modelo |
 | `--advanced` | incluir las opciones avanzadas al repasar modelos |
 | `--no-api-style` | no preguntar el SDK (`npm`) |
-| `--no-rescan` | no ofrecer un escaneo al cambiar URL o api key |
+| `--no-rescan` | no ofrecer el escaneo de comprobación |
 | `--no-prune` | no ofrecer la limpieza de modelos |
 
 A diferencia de `ocm update`, esto escribe en `opencode.json` en el momento (es
