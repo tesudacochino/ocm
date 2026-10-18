@@ -14,9 +14,9 @@ from ..config import ConfigManager, ConfigUI
 from ..cache_models import (
     MANAGED_MODEL_FIELDS,
     adopt_model_options,
-    managed_options,
     normalize_models,
 )
+from ..model_fields import serialize_model
 
 DEFAULT_NPM = "@ai-sdk/openai-compatible"
 
@@ -187,7 +187,12 @@ def build_provider_config(provider_name: str, cache_info: dict, provider_type: s
 
     models = {}
     for model_id, entry in normalize_models(cache_info.get("models")).items():
-        models[model_id] = {"name": entry.get("name") or model_id, **managed_options(entry)}
+        # serialize_model pasa los valores al formato del config: '128k' -> 131072,
+        # modalidades validadas, y descarta claves que opencode no conoce
+        serialized, avisos = serialize_model(entry)
+        for aviso in avisos:
+            ConfigUI.print_warning(f"{provider_name}/{model_id}: {aviso}")
+        models[model_id] = {"name": entry.get("name") or model_id, **serialized}
     if models:
         config["models"] = models
 

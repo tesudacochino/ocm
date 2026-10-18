@@ -24,5 +24,5 @@ uv pip install -e .
 
 echo ""
 echo "Instalación completada!"
-echo "Puedes usar: opencode-config-manager --help"
-echo "O: opencode-config-manager provider --new"
+echo "Puedes usar: ocm --help"
+echo "O: ocm new   /   ocm list   /   ocm update"

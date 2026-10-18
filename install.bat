@@ -20,5 +20,5 @@ if %ERRORLEVEL% EQU 0 (
 
 echo.
 echo Instalacion completada!
-echo Puedes usar: opencode-config-manager --help
-echo O: opencode-config-manager provider --new
+echo Puedes usar: ocm --help
+echo O: ocm new   /   ocm list   /   ocm update

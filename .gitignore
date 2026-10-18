@@ -33,8 +33,6 @@ env/
 *.swo
 *~
 
-# uv
-
 # Caché
 .provider_cache
 

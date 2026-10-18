@@ -350,6 +350,23 @@ build.bat
 
 Esto crea un ejecutable en `dist/ocm.exe`
 
+### Versionado y release
+
+- La serie **2.x = configuración de opencode v2** (2.0.0 es la primera). ocm
+  versiona por su cuenta con SemVer: mayor cuando rompe compatibilidad (formato de
+  la caché, semántica de `ocm update`, ejecutables que registra el paquete), no
+  cada vez que opencode saca versión.
+- La versión vive en **dos sitios**: `pyproject.toml` y `_version.__version__`.
+  `tests/test_fase_e.py` (E4) falla si no coinciden; después de tocarla, `uv lock`.
+- `build.bat` inyecta el commit con `scripts/set_version.py` —en bytes, porque
+  PowerShell `Set-Content` rompía los acentos de `_version.py`— y lo devuelve a
+  `dev` al terminar.
+- Los `[project.scripts]` solo generan shims en instalaciones con pip/uv; el `.exe`
+  de PyInstaller es un fichero único. **Nunca** registrar un script llamado
+  `opencode`: taparía al CLI real de opencode.
+- El workflow de Release (`.github/workflows/build.yml`) se dispara etiquetando
+  `v*`.
+
 ## Requisitos
 
 - Python 3.10+

@@ -6,11 +6,11 @@ cd /d "%SCRIPT_DIR%"
 
 echo === Compilando opencode-config-manager ===
 
-REM Inyectar commit hash en _version.py
+REM Inyectar commit hash en _version.py (en bytes: PowerShell romperia los acentos)
 for /f "delims=" %%i in ('git rev-parse --short HEAD') do set GIT_HASH=%%i
 if defined GIT_HASH (
     echo Commit: %GIT_HASH%
-    powershell -Command "(Get-Content 'src\opencode_config_manager\_version.py') -replace '__commit__ = \"dev\"', '__commit__ = \"%GIT_HASH%\"' | Set-Content 'src\opencode_config_manager\_version.py'"
+    uv run python scripts\set_version.py %GIT_HASH%
 )
 
 REM Limpiar builds anteriores
@@ -26,7 +26,7 @@ uv run pyinstaller opencode-config-manager.spec
 
 REM Restaurar _version.py
 if defined GIT_HASH (
-    powershell -Command "(Get-Content 'src\opencode_config_manager\_version.py') -replace '__commit__ = \"%GIT_HASH%\"', '__commit__ = \"dev\"' | Set-Content 'src\opencode_config_manager\_version.py'"
+    uv run python scripts\set_version.py dev
 )
 
 REM Verificar que se creó el ejecutable

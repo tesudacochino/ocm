@@ -2,6 +2,10 @@
 
 Gestor de providers locales para [opencode](https://opencode.ai). Permite gestionar providers de Ollama y vLLM con sistema de caché.
 
+> La serie 2.x gestiona la configuración de **opencode v2** (probado con opencode
+> 2.0.32). El número de versión de ocm es suyo: sube de mayor cuando ocm rompe
+> compatibilidad, no cada vez que opencode saca una versión.
+
 ## Instalación
 
 ### Descargar ejecutable (recomendado)
