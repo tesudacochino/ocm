@@ -55,6 +55,9 @@ def filas_de_un_modelo(entrada_cache: dict, det) -> list:
             accion = "igual"
         else:
             accion = "cambia"
+        # lo que ocm anoto como suposicion no lo puso nadie: una prueba lo sustituye
+        previa = (entrada_cache or {}).get(CLAVE_FUENTES, {}).get(spec.key, "")
+        era_suposicion = accion == "cambia" and str(previa).startswith("suposicion")
         filas.append({
             "spec": spec,
             "clave": spec.key,
@@ -63,6 +66,7 @@ def filas_de_un_modelo(entrada_cache: dict, det) -> list:
             "fuente": det.fuentes.get(spec.key, ""),
             "accion": accion,
             "suposicion": det.es_suposicion(spec.key),
+            "reemplazable": era_suposicion and not det.es_suposicion(spec.key),
         })
     return filas
 
@@ -75,10 +79,11 @@ def aplicar_filas(entrada_cache: dict, filas: list, forzar: bool) -> int:
         if fila["accion"] == "anade":
             set_value(entrada_cache, fila["clave"], fila["valor"])
             escritos += 1
-        elif fila["accion"] == "cambia" and forzar:
+        elif fila["accion"] == "cambia" and (forzar or fila.get("reemplazable")):
             set_value(entrada_cache, fila["clave"], fila["valor"])
             escritos += 1
-        if fila["accion"] in ("anade", "igual") or (fila["accion"] == "cambia" and forzar):
+        if fila["accion"] in ("anade", "igual") or (
+                fila["accion"] == "cambia" and (forzar or fila.get("reemplazable"))):
             fuentes[fila["clave"]] = fila["fuente"]
 
     if fuentes:
@@ -171,7 +176,7 @@ def consultar_modelos(base_url: str, api_key: str, modelos: dict, seleccion: lis
         # sin --force un valor ya puesto no se cambia: asi lo ven tambien los que no pintan
         ya_puestas = set()
         for fila in filas:
-            if fila["accion"] == "cambia" and not forzar:
+            if fila["accion"] == "cambia" and not forzar and not fila.get("reemplazable"):
                 fila["accion"] = "respeta"
                 ya_puestas.add(fila["clave"])
         trabajos.append({"model_id": model_id, "entrada": entrada_cache,
@@ -184,6 +189,9 @@ def consultar_modelos(base_url: str, api_key: str, modelos: dict, seleccion: lis
             titulo += f"   [{det.servidor}]"
         print(f"\n{Colors.BOLD}{Colors.BRIGHT_BLUE}{titulo}{Colors.RESET}")
 
+        if entradas and model_id not in entradas:
+            print(Colors.YELLOW + f"  ! El servidor no lista '{model_id}'. Sirve: " +
+                  ", ".join(sorted(entradas)) + Colors.RESET)
         if not filas:
             print("  No se ha podido averiguar nada nuevo.")
         else:
@@ -330,13 +338,24 @@ def cmd_model_detect(manager: ConfigManager, args):
               f"{totales['respeta']} respetadas, {totales['cambia']} cambiadas.")
 
     if aplicar:
+        # un valor que sustituye a otro ya puesto no llega a opencode.json con un
+        # 'ocm update' normal (no pisa claves existentes)
+        sustituidos = sum(1 for t in trabajos for f in t["filas"]
+                          if f["accion"] == "cambia" and (forzar or f.get("reemplazable")))
         escritos_total = aplicar_propuesta(trabajos, forzar)
         if escritos_total:
             cache_info["models"] = modelos
             manager.save_cache(touch=False)
         print()
-        print(f"{Colors.BRIGHT_GREEN}{escritos_total} opcion(es) en la cache.{Colors.RESET} "
-              "Aplica con: " + Colors.CYAN + f"ocm update {provider}" + Colors.RESET)
+        if not escritos_total:
+            print("Nada que guardar en la cache.")
+        else:
+            print(f"{Colors.BRIGHT_GREEN}{escritos_total} opcion(es) en la cache.{Colors.RESET} "
+                  "Aplica con: " + Colors.CYAN +
+                  f"ocm update {provider}{' --force' if sustituidos else ''}" + Colors.RESET)
+            if sustituidos:
+                print(f"{sustituidos} sustituye(n) un valor que ya estaba en la cache: "
+                      "sin --force, 'ocm update' no pisa lo que opencode.json ya tiene.")
         if not forzar and totales["respeta"]:
             print("Algunos valores ya los tenias puestos: "
                   f"{Colors.CYAN}--force{Colors.RESET} los actualizaria.")
