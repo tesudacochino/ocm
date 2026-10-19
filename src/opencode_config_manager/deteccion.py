@@ -303,7 +303,7 @@ def _desde_entrada(entrada, d, fuente, textos):
 
     for clave in ("root", "parent", "model_path"):
         if entrada.get(clave):
-            textos.append(_nombre_del_repo(str(entrada[clave])))
+            textos.extend(_nombres_del_repo(str(entrada[clave])))
 
 
 def _desde_props(props, d, textos):
@@ -336,7 +336,7 @@ def _desde_props(props, d, textos):
         _contexto_de(d, params, ("n_ctx", "ctx_size"), "GET /props ({})")
 
     if props.get("model_path"):
-        textos.append(_nombre_del_repo(str(props["model_path"])))
+        textos.extend(_nombres_del_repo(str(props["model_path"])))
 
 
 def _desde_show(show, d, textos):
@@ -387,13 +387,42 @@ _AVISO_REGISTRO = None      # sobre que ruta se aviso ya de que no existe
 def _nombre_del_repo(ruta: str) -> str:
     """De '/hf/hub/models--nvidia--NVIDIA-Nemotron-3.5-Super-VL.../snapshots/xxx' saca el repo."""
     tramos = [t for t in re.split(r"[/\\]", ruta) if t]
+    # El repo de HF manda: el snapshot cuelga de el y su nombre puede ser un hash con
+    # sufijo ('fc694b...-fp8hybrid') que no hay forma de distinguir de un modelo
     for tramo in reversed(tramos):
         if tramo.startswith("models--"):
             partes = tramo.split("--")
             return partes[-1] if len(partes) > 1 else tramo
+    for tramo in reversed(tramos):
         if tramo not in ("snapshots", "blobs", "refs") and not re.fullmatch(r"[0-9a-f]{20,}", tramo):
             return tramo
     return ""
+
+
+def _nombres_del_repo(ruta: str) -> list:
+    """El repo de la ruta y, si la ruta dice la organizacion, el repo sin ella.
+
+    'models--nvidia--NVIDIA-Qwen3.8-Flash-Next-NVFP4' da el repo tal cual y
+    'Qwen3.8-Flash-Next-NVFP4': el registro conoce el modelo sin la marca del que lo
+    publica en HF.
+    """
+    repo = _nombre_del_repo(ruta)
+    if not repo:
+        return []
+    nombres = [repo]
+    for tramo in re.split(r"[/\\]", ruta):
+        partes = tramo.split("--")
+        if tramo.startswith("models--") and len(partes) > 2:
+            org = partes[1].lower()
+            if repo.lower().startswith(org + "-") and len(repo) > len(org) + 1:
+                nombres.append(repo[len(org) + 1:])
+            break
+    return nombres
+
+
+# Etiquetas de cuantizacion/formato que HF pega al nombre y el registro no lleva
+_SUFIJO_CUANTIZACION = re.compile(
+    r"[-_.](nvfp4|mxfp4|fp4|fp8|fp16|bf16|int4|int8|awq|gptq|gguf|exl2|marlin|w4a16|w8a8)$")
 
 
 def _formas(texto: str) -> list:
@@ -412,6 +441,12 @@ def _formas(texto: str) -> list:
         sin_tag = cola.split(":")[0]
         if sin_tag not in salida:
             salida.append(sin_tag)
+    # sin los sufijos de cuantizacion: 'qwen3.8-flash-next-nvfp4' -> 'qwen3.8-flash-next'
+    sin_cuantizar = cola
+    while _SUFIJO_CUANTIZACION.search(sin_cuantizar):
+        sin_cuantizar = _SUFIJO_CUANTIZACION.sub("", sin_cuantizar)
+        if sin_cuantizar not in salida:
+            salida.append(sin_cuantizar)
     return salida
 
 

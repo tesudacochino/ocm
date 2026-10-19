@@ -160,7 +160,9 @@ def consultar_modelos(base_url: str, api_key: str, modelos: dict, seleccion: lis
         det = detectar_opciones(
             base_url, api_key, model_id,
             entrada=entradas.get(model_id),
-            nombre=nombre if nombre and nombre != model_id else None,
+            # el nombre por defecto ('id · provider') no es una pista: lo puso ocm
+            nombre=nombre if nombre and nombre != model_id
+            and not nombre.startswith(f"{model_id} · ") else None,
             explorador=explorador,
             usar_registro=usar_registro,
             probar=probar,

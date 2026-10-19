@@ -475,6 +475,38 @@ def scenario_regresiones_limpieza(home: Path, config: Path):
           "H15: y no escribe otro provider del mismo tipo")
 
 
+def scenario_alias_del_modelo(home: Path, config: Path):
+    """H16: un alias ('default') detecta lo mismo que el modelo al que apunta."""
+    print("\n=== H16: un alias detecta lo mismo que su modelo ===")
+    raiz = ("/hf/hub/models--nvidia--Qwen3.8-Flash-Next-NVFP4/snapshots/"
+            "fc694b54fb0174e0913e6adf86691ef85a4ead47-fp8hybrid")
+    check(deteccion._nombre_del_repo(raiz) == "Qwen3.8-Flash-Next-NVFP4",
+          "H16: el repo sale aunque el snapshot sea un hash con sufijo")
+    raiz_con_org = raiz.replace("models--nvidia--Qwen3.8", "models--nvidia--NVIDIA-Qwen3.8")
+    check("Qwen3.8-Flash-Next-NVFP4" in deteccion._nombres_del_repo(raiz_con_org),
+          "H16: y sin la organizacion repetida en el nombre")
+    check("qwen3.8-flash-next" in deteccion._formas("Qwen3.8-Flash-Next-NVFP4"),
+          "H16: sin el sufijo de cuantizacion")
+
+    registro = {"providers": {"vultr": {"models": {"qwen3.8-flash-next": {
+        "limit": {"context": 262144, "output": 131072}, "reasoning": True}}}}}
+    preparar(home, config, modelos={}, con_registro=registro)
+    resultados = {}
+    for mid in ("qwen3.8-flash-next", "default"):
+        entrada = {"id": mid, "owned_by": "vllm", "root": raiz, "max_model_len": 500000}
+        servidor = ServidorFalso()
+        servidor.instalar()
+        try:
+            resultados[mid] = deteccion.detectar_opciones(URL, None, mid, entrada=entrada)
+        finally:
+            servidor.restaurar()
+    real, alias = resultados["qwen3.8-flash-next"], resultados["default"]
+    check(alias.valores == real.valores, "H16: 'default' detecta los mismos valores")
+    check(alias.valores.get("limit.output") == 131072
+          and not alias.es_suposicion("limit.output"),
+          "H16: la salida sale del registro, no de una suposicion")
+
+
 def main_tests():
     escenarios = [
         ("new rellena y confirma", scenario_new_apply),
@@ -489,6 +521,7 @@ def main_tests():
         ("el motor no viaja", scenario_motor_no_viaja),
         ("salida supuesta", scenario_salida_supuesta),
         ("regresiones de la limpieza", scenario_regresiones_limpieza),
+        ("alias del modelo", scenario_alias_del_modelo),
     ]
     for nombre, fn in escenarios:
         home = Path(tempfile.mkdtemp(prefix="ocm-test-h-"))
