@@ -3,6 +3,23 @@
 Formato [Keep a Changelog](https://keepachangelog.com/es/1.1.0/), versionado
 [SemVer](https://semver.org/lang/es/).
 
+## [2.1.1] - 2026-10-19
+
+Arreglos de `ocm model detect` salidos de probarlo contra providers reales.
+
+### Corregido
+
+- Un alias de modelo (`default`) detecta lo mismo que el modelo al que apunta: el repo
+  de HuggingFace se busca por el tramo `models--org--repo`, también sin organización ni
+  cuantización.
+- Un valor que ocm anotó como suposición (p. ej. `limit.output`) se sustituye en cuanto
+  una fuente real lo confirma, en vez de tratarse como algo puesto por el usuario.
+- Si el servidor no lista el modelo, se avisa y se enseña lo que sí sirve, en vez de
+  decir que no se ha averiguado nada.
+- Tras `--apply`: sin cambios ya no manda a `ocm update`; si sustituye un valor ya
+  puesto indica `ocm update --force`, porque sin él no pisa `opencode.json`.
+- El nombre visible por defecto (`modelo · provider`) ya no se usa como pista de búsqueda.
+
 ## [2.1.0] - 2026-10-18
 
 Ajustes del asistente de opciones, salidos de usarlo contra providers reales, una
