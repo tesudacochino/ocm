@@ -8,9 +8,9 @@ from ..config import Colors, ConfigManager, ConfigUI
 from .provider import print_provider_cache_info
 from .utils import (
     ETIQUETA_FUENTE,
-    TIPOS_ETIQUETA,
+    ask_tipo_menu,
     estado_tipo,
-    normalizar_tipo,
+    parse_tipo_arg,
 )
 
 
@@ -63,27 +63,16 @@ def cmd_cache_type(manager: ConfigManager, args):
         ConfigUI.print_header(f"Tipo de {proveedor}")
         print(f"  URL base : {cache_info.get('baseUrl', 'N/A')}")
         print(f"  Tipo     : {_linea_tipo(estado)}")
-        etiquetas = [TIPOS_ETIQUETA["vllm"], TIPOS_ETIQUETA["ollama"],
-                     "No lo se: detectarlo al escanear"]
-        if estado["tipo"] in ("vllm", "ollama"):
-            por_defecto = etiquetas[0] if estado["tipo"] == "vllm" else etiquetas[1]
-        else:
-            por_defecto = etiquetas[2]
-        elegida = ConfigUI.ask_choice("Dejarlo en", etiquetas, default=por_defecto)
-        pedido = "vllm" if elegida == etiquetas[0] else (
-            "ollama" if elegida == etiquetas[1] else "auto")
+        pedido = ask_tipo_menu("Dejarlo en", estado["tipo"])
 
-    texto = str(pedido).strip().lower()
-    if texto == "auto":
-        nuevo_tipo = None
+    nuevo_tipo, valido = parse_tipo_arg(pedido)
+    if not valido:
+        return
+    if nuevo_tipo:
+        fuente = "manual"
+    else:
         fuente = None
         ConfigUI.print_info("Ocm lo detectara solo en el proximo escaneo.")
-    else:
-        nuevo_tipo = normalizar_tipo(texto)
-        if not nuevo_tipo:
-            ConfigUI.print_error(f"Tipo '{pedido}' desconocido; vale 'ollama', 'vllm' o 'auto'.")
-            return
-        fuente = "manual"
 
     if nuevo_tipo == estado["tipo"] and fuente == estado["fuente"]:
         ConfigUI.print_info(f"'{proveedor}' ya tenia el tipo {nuevo_tipo or 'auto'}.")

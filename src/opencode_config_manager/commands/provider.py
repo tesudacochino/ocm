@@ -13,15 +13,17 @@ from ..deteccion import (CLAVE_MOTOR, CLAVE_MOTOR_ANTERIOR,
                          CLAVE_MOTOR_EVIDENCIA)
 from .configure import ask_api_style_fields
 from .encoded import print_encoded_notice
+from .update import cmd_update_provider
 from .options import configure_model_entry
 from .detect import proponer_en_asistente
 from .scan import anotar_motor
 from .utils import (
     ENDPOINT_TIPO,
     ETIQUETA_FUENTE,
-    TIPOS_ETIQUETA,
-    normalizar_tipo,
+    ask_tipo_menu,
+    parse_tipo_arg,
     provider_entry_from_config,
+    url_para_cache,
 )
 
 
@@ -260,11 +262,8 @@ def cmd_provider_new(manager: ConfigManager, args):
     default_url = previous.get("baseUrl") or "http://127.0.0.1:11434"
     base_url = ConfigUI.ask_input("URL base del provider", default_url)
 
-    # Eliminar /v1 del final si el usuario lo incluyó, para que el escaneo funcione
-    if base_url.endswith("/v1"):
-        base_url = base_url[:-3]
-    elif base_url.endswith("/v1/"):
-        base_url = base_url[:-4]
+    # Quitar el /v1 del final si el usuario lo puso, para que el escaneo funcione
+    base_url = url_para_cache(base_url)
 
     # API Key opcional (se reutiliza la guardada si aplica)
     default_key = previous.get("apiKey", "")
@@ -274,13 +273,9 @@ def cmd_provider_new(manager: ConfigManager, args):
     pedido = None
     tipo_flag = getattr(args, "type", None)
     if tipo_flag:
-        texto = str(tipo_flag).strip().lower()
-        if texto != "auto":
-            pedido = normalizar_tipo(texto)
-            if not pedido:
-                ConfigUI.print_error(f"Tipo '{tipo_flag}' desconocido; "
-                                     "vale 'ollama', 'vllm' o 'auto'.")
-                return
+        pedido, valido = parse_tipo_arg(tipo_flag)
+        if not valido:
+            return
 
     provider_type = None
     models = []
@@ -322,9 +317,7 @@ def cmd_provider_new(manager: ConfigManager, args):
             print("Operación cancelada.")
             return
         # Ya no se escribe a mano: se elige uno de los dos tipos validos
-        etiquetas = [TIPOS_ETIQUETA["vllm"], TIPOS_ETIQUETA["ollama"]]
-        elegida = ConfigUI.ask_choice("Tipo de servidor", etiquetas, default=etiquetas[1])
-        provider_type = "vllm" if elegida == etiquetas[0] else "ollama"
+        provider_type = ask_tipo_menu("Tipo de servidor", con_auto=False)
         evidencia, fuente = ENDPOINT_TIPO[provider_type], "manual"
         models = list(normalize_models(previous.get("models")))
         if models:
@@ -379,7 +372,6 @@ def cmd_provider_new(manager: ConfigManager, args):
 
     # Escribir en opencode.json desde aquí mismo, si el usuario quiere
     if ConfigUI.ask_yes_no("¿Actualizar opencode.json ahora?", default="y"):
-        from .update import cmd_update_provider
         print()
         cmd_update_provider(manager, args, provider=provider_name)
     else:

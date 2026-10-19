@@ -19,7 +19,6 @@ from ..config import ConfigManager, ConfigUI, Colors
 from ..cache_models import (DIAS_SCAN, normalize_models, provider_needs_rescan,
                             scan_desactualizado)
 from .detect import merece_deteccion, proponer_en_asistente
-from .model import resolve_provider
 from .options import (
     KEEP,
     UNSET_WORDS,
@@ -31,13 +30,14 @@ from .scan import scan_single_provider
 from .utils import (
     API_STYLES,
     ETIQUETA_FUENTE,
-    TIPOS_ETIQUETA,
+    ask_tipo_menu,
     create_backup,
     estado_tipo,
     get_provider_type,
-    normalizar_tipo,
+    parse_tipo_arg,
     provider_entry_from_config,
     refresh_cache_from_config,
+    resolve_provider,
     tipo_guardado,
     url_para_config,
 )
@@ -178,33 +178,19 @@ def _ask_tipo(provider: str, cache_info: dict, manager: ConfigManager,
     Es un dato de ocm, no de opencode: solo cambia que endpoint se escanea.
     """
     if "type" in overrides:
-        texto = str(overrides["type"]).strip().lower()
-        if texto == "auto":
-            return {"provider_type": None, "type_source": None}
-        canonico = normalizar_tipo(texto)
-        if canonico:
-            return {"provider_type": canonico, "type_source": "manual"}
-        ConfigUI.print_error(f"Tipo '{overrides['type']}' desconocido; "
-                             "vale 'ollama', 'vllm' o 'auto'.")
-        return {}
+        tipo, valido = parse_tipo_arg(overrides["type"])
+        if not valido:
+            return {}
+        return {"provider_type": tipo, "type_source": "manual" if tipo else None}
 
     actual = tipo_guardado(provider, cache_info, manager)
-    etiquetas = [TIPOS_ETIQUETA["vllm"], TIPOS_ETIQUETA["ollama"],
-                 "No lo se: detectarlo al escanear"]
-    if actual in ("vllm", "ollama"):
-        por_defecto = etiquetas[0] if actual == "vllm" else etiquetas[1]
-    else:
-        por_defecto = etiquetas[2]
-
-    elegida = ConfigUI.ask_choice(
-        "Tipo de servidor  (no cambia opencode.json; solo que endpoint escanea ocm)",
-        etiquetas, default=por_defecto)
-    if elegida == por_defecto:
+    elegido = ask_tipo_menu(
+        "Tipo de servidor  (no cambia opencode.json; solo que endpoint escanea ocm)", actual)
+    if elegido == (actual if actual in ("vllm", "ollama") else "auto"):
         return {}
-    if elegida == etiquetas[2]:
+    if elegido == "auto":
         return {"provider_type": None, "type_source": None}
-    return {"provider_type": "vllm" if elegida == etiquetas[0] else "ollama",
-            "type_source": "manual"}
+    return {"provider_type": elegido, "type_source": "manual"}
 
 
 def _ask_fields(provider: str, cache_info: dict, entry: dict, overrides: dict,

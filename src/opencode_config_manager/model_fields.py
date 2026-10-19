@@ -102,8 +102,9 @@ FIELDS: tuple = (
 
 FIELDS_BY_KEY = {spec.key: spec for spec in FIELDS}
 
-# Claves que ocm sabe escribir en opencode.json (orden estable al serializar)
-SERIALIZE_ORDER = (
+# Opciones de modelo que ocm sabe escribir en opencode.json: son las claves validas de
+# ModelConfig en https://opencode.ai/config.json, y el orden en que se serializan
+MANAGED_MODEL_FIELDS = (
     "id", "name", "family", "release_date", "attachment", "reasoning",
     "temperature", "tool_call", "interleaved", "cost", "limit", "modalities",
     "experimental", "status", "provider", "options", "headers", "variants",
@@ -117,6 +118,11 @@ KEY_ALIASES = {
     "capabilities.tools": "tool_call",
     "capabilities.reasoning": "reasoning",
 }
+
+
+def es_vacio(valor) -> bool:
+    """Un valor sin contenido: None, cadena vacia, lista vacia o dict vacio."""
+    return valor is None or valor == "" or valor == [] or valor == {}
 
 
 def spec_for(key: str) -> FieldSpec:
@@ -133,6 +139,11 @@ def canonical_key(key: str) -> str:
 def visible_fields(advanced: bool = False) -> tuple:
     """Campos que pregunta el asistente."""
     return tuple(spec for spec in FIELDS if advanced or not spec.advanced)
+
+
+# Opciones que "posee" el asistente: si se quitan, desaparecen tambien del config.
+# Las demas (`options`, `variants`, `cost`, `headers`, ...) son siempre ajenas.
+WIZARD_OWNED_KEYS = frozenset(spec.key.split(".")[0] for spec in visible_fields(True))
 
 
 def parse_int(raw):
@@ -290,11 +301,11 @@ def serialize_model(entry: dict) -> tuple:
     if not isinstance(entry, dict):
         return out, warnings
 
-    for key in SERIALIZE_ORDER:
+    for key in MANAGED_MODEL_FIELDS:
         if key not in entry:
             continue
         value = entry[key]
-        if value is None or value == {} or value == [] or value == "":
+        if es_vacio(value):
             continue
 
         if key == "limit":
@@ -381,18 +392,14 @@ def format_value(spec: FieldSpec, value) -> str:
     'por defecto', para que Intro sea una decision informada y no un salto de fe.
     En los enteros no hay default que enseñar: 'sin definir'.
     """
-    if value is None or value == "" or value == [] or value == {}:
+    if es_vacio(value):
         if spec.kind == "int":
             return SIN_DEFINIR
         if spec.key in EFFECTIVE_DEFAULTS:
             return POR_DEFECTO + format_value(spec, EFFECTIVE_DEFAULTS[spec.key])
         return ""
-    if spec.kind == "bool":
+    if spec.kind == "bool" or isinstance(value, bool):
         return "si" if value else "no"
     if spec.kind == "multi":
-        if isinstance(value, str):
-            return value
-        return ",".join(value)
-    if isinstance(value, bool):
-        return "si" if value else "no"
+        return _lista(value)
     return str(value)

@@ -5,8 +5,7 @@ Comandos de depuración y validación.
 import json
 
 from ..config import ConfigManager, ConfigUI
-from ..cache_models import MANAGED_MODEL_FIELDS
-from ..model_fields import MODALITIES
+from ..model_fields import MANAGED_MODEL_FIELDS, MODALITIES
 from .encoded import format_notes
 
 # Claves de provider aceptadas por opencode según la clave raíz

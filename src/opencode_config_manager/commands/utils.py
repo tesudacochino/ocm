@@ -12,11 +12,10 @@ from pathlib import Path
 
 from ..config import ConfigManager, ConfigUI
 from ..cache_models import (
-    MANAGED_MODEL_FIELDS,
     adopt_model_options,
     normalize_models,
 )
-from ..model_fields import serialize_model
+from ..model_fields import MANAGED_MODEL_FIELDS, serialize_model
 
 DEFAULT_NPM = "@ai-sdk/openai-compatible"
 
@@ -72,6 +71,44 @@ def normalizar_tipo(valor) -> str | None:
     if not valor:
         return None
     return TYPE_ALIASES.get(str(valor).strip().lower())
+
+
+def url_para_cache(url: str) -> str:
+    """URL para la caché: el config lleva /v1 y la caché no (inversa de url_para_config)."""
+    texto = (url or "").rstrip("/")
+    if texto.endswith("/v1"):
+        texto = texto[: -len("/v1")]
+    return texto.rstrip("/")
+
+
+def parse_tipo_arg(valor) -> tuple:
+    """Interpreta lo que se da como tipo (`--type`, menu): (tipo, valido).
+
+    'auto' es valido y significa 'sin tipo fijado' -> (None, True). Un tipo que no se
+    conoce avisa y devuelve (None, False).
+    """
+    texto = str(valor).strip().lower()
+    if texto == "auto":
+        return None, True
+    tipo = normalizar_tipo(texto)
+    if not tipo:
+        ConfigUI.print_error(f"Tipo '{valor}' desconocido; vale 'ollama', 'vllm' o 'auto'.")
+    return tipo, bool(tipo)
+
+
+def ask_tipo_menu(prompt: str, actual: str = None, con_auto: bool = True) -> str:
+    """Menu del tipo de servidor: devuelve 'vllm', 'ollama' o 'auto'.
+
+    Intro deja `actual` (o 'auto'/'ollama' si no hay ninguno). Sin `con_auto` la
+    opcion 'no lo se' no se ofrece.
+    """
+    opciones = [("vllm", TIPOS_ETIQUETA["vllm"]), ("ollama", TIPOS_ETIQUETA["ollama"])]
+    if con_auto:
+        opciones.append(("auto", "No lo se: detectarlo al escanear"))
+    etiquetas = dict(opciones)
+    defecto = actual if actual in ("vllm", "ollama") else ("auto" if con_auto else "ollama")
+    elegida = ConfigUI.ask_choice(prompt, list(etiquetas.values()), default=etiquetas[defecto])
+    return next(tipo for tipo, etiqueta in opciones if etiqueta == elegida)
 
 
 def url_para_config(base_url: str) -> str:
@@ -214,6 +251,56 @@ def create_backup(config_path: Path) -> str:
     except Exception as e:
         ConfigUI.print_error(f"No se pudo crear backup: {e}")
         return None
+
+
+def pick_from_list(items: list, label: str):
+    """Menú numerado simple. Devuelve el item elegido o None."""
+    if not items:
+        return None
+    if len(items) == 1:
+        print(f"{label}: {items[0]}")
+        return items[0]
+
+    print(f"Selecciona {label}:")
+    for index, item in enumerate(items, start=1):
+        print(f"  {index}) {item}")
+    while True:
+        raw = ConfigUI.ask_input("Opción", "1")
+        if raw.isdigit() and 1 <= int(raw) <= len(items):
+            return items[int(raw) - 1]
+        ConfigUI.print_warning("Numero fuera de rango.")
+
+
+def resolve_provider(manager: ConfigManager, provider: str = None,
+                     extra_names=None) -> str:
+    """Resolver el provider por argumento o preguntando entre los conocidos.
+
+    Args:
+        extra_names: nombres adicionales a ofrecer, para los providers que solo
+            existen en el bloque 'providers' y aun asi se quieren listar.
+    """
+    manager.load_cache()
+    manager.load_config()
+
+    names = sorted(set(manager.cache_data.get("providers", {})) |
+                   set(k for k, v in (manager.config_data.get("provider", {}) or {}).items()
+                       if isinstance(v, dict)) |
+                   set(extra_names or []))
+
+    if provider:
+        if provider in names:
+            return provider
+        ConfigUI.print_error(f"Provider '{provider}' no encontrado.")
+        print("Providers conocidos:")
+        for name in names:
+            print(f"  - {name}")
+        return None
+
+    if not names:
+        ConfigUI.print_error("No hay providers. Ejecuta: ocm new")
+        return None
+
+    return pick_from_list(names, "provider")
 
 
 def build_provider_config(provider_name: str, cache_info: dict) -> dict:

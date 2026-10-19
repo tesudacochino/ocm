@@ -39,6 +39,32 @@ class ProbeResult:
     entradas: dict[str, dict] = field(default_factory=dict)
 
 
+def _peticion(base_url: str, endpoint: str, api_key: str = None) -> tuple:
+    """(url, cabeceras) de una peticion a un provider."""
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    return f"{(base_url or '').rstrip('/')}{endpoint}", headers
+
+
+def _pedir_json(enviar, endpoint: str):
+    """Ejecuta `enviar()` y devuelve (datos, error) en vez de romper.
+
+    Un proxy o un puerto equivocado suelen contestar 200 con una pagina, y ahi
+    response.json() lanza ValueError: no es un RequestException y se escapaba.
+    """
+    try:
+        response = enviar()
+        response.raise_for_status()
+        return response.json(), None
+    except requests.exceptions.RequestException as error:
+        return None, str(error)
+    except ValueError:          # cuerpo que no es JSON
+        return None, f"{endpoint} contesto algo que no es JSON"
+    except Exception as error:           # noqa: BLE001 - consultar no debe romper
+        return None, f"error inesperado en {endpoint}: {error}"
+
+
 class ProviderScanner:
     """Escáner para providers locales.
 
@@ -49,43 +75,16 @@ class ProviderScanner:
 
     @staticmethod
     def _get_json(base_url: str, endpoint: str, api_key: str = None):
-        """GET + JSON, devolviendo (datos, error) en vez de romper por un 200 con HTML.
-
-        Un proxy o un puerto equivocado suelen contestar 200 con una pagina, y ahi
-        response.json() lanza ValueError: no es un RequestException y se escapaba.
-        """
-        url = f"{(base_url or '').rstrip('/')}{endpoint}"
-        headers = {"Content-Type": "application/json"}
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-        try:
-            response = requests.get(url, headers=headers, timeout=30)
-            response.raise_for_status()
-            return response.json(), None
-        except requests.exceptions.RequestException as error:
-            return None, str(error)
-        except ValueError:          # cuerpo que no es JSON
-            return None, f"{endpoint} contesto algo que no es JSON"
-        except Exception as error:           # noqa: BLE001 - consultar no debe romper
-            return None, f"error inesperado en {endpoint}: {error}"
+        """GET + JSON, devolviendo (datos, error) en vez de romper por un 200 con HTML."""
+        url, headers = _peticion(base_url, endpoint, api_key)
+        return _pedir_json(lambda: requests.get(url, headers=headers, timeout=30), endpoint)
 
     @staticmethod
     def _post_json(base_url: str, endpoint: str, cuerpo: dict, api_key: str = None):
         """POST + JSON, para /api/show de ollama (que es de consultar, pero por POST)."""
-        url = f"{(base_url or '').rstrip('/')}{endpoint}"
-        headers = {"Content-Type": "application/json"}
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-        try:
-            response = requests.post(url, json=cuerpo, headers=headers, timeout=30)
-            response.raise_for_status()
-            return response.json(), None
-        except requests.exceptions.RequestException as error:
-            return None, str(error)
-        except ValueError:
-            return None, f"{endpoint} contesto algo que no es JSON"
-        except Exception as error:           # noqa: BLE001
-            return None, f"error inesperado en {endpoint}: {error}"
+        url, headers = _peticion(base_url, endpoint, api_key)
+        return _pedir_json(
+            lambda: requests.post(url, json=cuerpo, headers=headers, timeout=30), endpoint)
 
     @staticmethod
     def probar_entrada(base_url: str, endpoint: str, cuerpo: dict, api_key: str = None):
@@ -95,10 +94,7 @@ class ProviderScanner:
         image inputs' es informacion util, no un fallo de conexion. Por eso aqui no
         se usa raise_for_status y el cuerpo del error se devuelve como mensaje.
         """
-        url = f"{(base_url or '').rstrip('/')}{endpoint}"
-        headers = {"Content-Type": "application/json"}
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
+        url, headers = _peticion(base_url, endpoint, api_key)
         try:
             response = requests.post(url, json=cuerpo, headers=headers, timeout=60)
         except requests.exceptions.RequestException as error:
@@ -168,8 +164,7 @@ class ProviderScanner:
         modelos = []
         entradas = {}
         for nombre, entrada in ProviderScanner._pares(lista, claves_nombre):
-            if nombre.startswith("data/"):
-                nombre = nombre[5:]  # Remove "data/" prefix
+            nombre = nombre.removeprefix("data/")
             modelos.append(nombre)
             entradas[nombre] = entrada
         return ScanResult(success=True, models=modelos, entradas=entradas)

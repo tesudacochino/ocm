@@ -25,8 +25,10 @@ from ..cache_models import normalize_models
 from ..deteccion import CLAVE_DETECTADO, CLAVE_FUENTES
 from ..model_fields import (
     KEEP,
+    WIZARD_OWNED_KEYS,
     coerce,
     describe_model,
+    es_vacio,
     format_value,
     get_value,
     serialize_model,
@@ -34,15 +36,15 @@ from ..model_fields import (
     spec_for,
     visible_fields,
 )
-from .model import _pick_from_list, resolve_provider
-from .utils import provider_entry_from_config, refresh_cache_from_config
+from .utils import (
+    pick_from_list,
+    provider_entry_from_config,
+    refresh_cache_from_config,
+    resolve_provider,
+)
 
 # El usuario decidio salir del asistente
 STOP = object()
-
-# Opciones que "posee" el asistente: si se quitan, desaparecen tambien del config.
-# Las demas (`options`, `variants`, `cost`, `headers`, ...) son siempre ajenas.
-WIZARD_OWNED_KEYS = frozenset(field.key.split(".")[0] for field in visible_fields(True))
 
 # Palabras que significan "quitar esta opcion" y "salir del asistente"
 UNSET_WORDS = ("-", "ninguna", "ninguno", "ningun", "vacío", "vacio", "null", "none")
@@ -156,7 +158,7 @@ def configure_model_entry(entry: dict, advanced: bool = False, only=None,
     # El nombre viene siempre rellenado (con el id), asi que no cuenta para saber si
     # el modelo ya tiene opciones guardadas.
     opciones = [spec for spec in specs if spec.key != "name"]
-    if not any(get_value(entry, spec.key) not in (None, "", [], {}) for spec in opciones):
+    if all(es_vacio(get_value(entry, spec.key)) for spec in opciones):
         # Un modelo recien escaneado no trae nada guardado: los corchetes ensenan lo
         # que opencode asume, no algo que ocm vaya a escribir si dan Intro.
         print(f"{Colors.WHITE}  Sin opciones guardadas: lo de entre corchetes es lo que"
@@ -171,7 +173,7 @@ def configure_model_entry(entry: dict, advanced: bool = False, only=None,
             continue
 
         if "suposicion" in str(fuentes.get(spec.key, "")).lower() \
-                and get_value(entry, spec.key) not in (None, "", [], {}):
+                and not es_vacio(get_value(entry, spec.key)):
             print(f"{Colors.YELLOW}  ! {spec.key} lo puso una pista del nombre,"
                   f" no una prueba{Colors.RESET}")
 
@@ -348,7 +350,7 @@ def cmd_model_options(manager: ConfigManager, args):
         if getattr(args, "all", False):
             targets = ids
         else:
-            picked = _pick_from_list(ids, "modelo")
+            picked = pick_from_list(ids, "modelo")
             if not picked:
                 return
             targets = [picked]
@@ -396,7 +398,7 @@ def cmd_model_show(manager: ConfigManager, args):
         configured = {}
 
     ids = list(models) + [mid for mid in configured if mid not in models]
-    model_id = getattr(args, "model", None) or _pick_from_list(ids, "modelo")
+    model_id = getattr(args, "model", None) or pick_from_list(ids, "modelo")
     if not model_id or (not models.get(model_id) and not configured.get(model_id)):
         ConfigUI.print_error("No hay opciones guardadas para ese modelo.")
         return

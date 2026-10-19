@@ -260,16 +260,33 @@ def _con(*extras, base=None):
 
 
 # ------------------------------------------------------------------- por fuente --
+def _contexto_de(d, datos, claves, fuente):
+    """Ofrece `limit.context` con el primer entero positivo de `claves`.
+
+    `fuente` lleva un `{}` donde va la clave que lo dio, para que la procedencia diga
+    de donde salio el numero y no una etiqueta fija.
+    """
+    for clave in claves:
+        valor = datos.get(clave)
+        if isinstance(valor, int) and valor > 0:
+            d.ofrecer("limit.context", valor, fuente.format(clave))
+            return
+
+
+def _textos_de(datos, claves, textos):
+    """Anade a `textos` (pistas para el registro y el nombre) lo que haya en `claves`."""
+    for clave in claves:
+        if datos.get(clave):
+            textos.append(str(datos[clave]))
+
+
 def _desde_entrada(entrada, d, fuente, textos):
     """Lo que el servidor ya dijo en la lista de modelos (/v1/models o /api/tags)."""
     if not isinstance(entrada, dict):
         return
 
-    for clave in ("max_model_len", "context_length", "n_ctx", "max_context"):
-        valor = entrada.get(clave)
-        if isinstance(valor, int) and valor > 0:
-            d.ofrecer("limit.context", valor, f"{fuente} ({clave})")
-            break
+    _contexto_de(d, entrada, ("max_model_len", "context_length", "n_ctx", "max_context"),
+                 f"{fuente} ({{}})")
 
     _desde_capabilities(
         _lista_capability(entrada.get("capabilities") or entrada.get("capability")),
@@ -279,9 +296,7 @@ def _desde_entrada(entrada, d, fuente, textos):
     if isinstance(details, dict):
         _desde_capabilities(_lista_capability(details.get("capability")), f"{fuente} (details)",
                             d, textos)
-        for clave in ("format", "family"):
-            if details.get(clave):
-                textos.append(str(details[clave]))
+        _textos_de(details, ("format", "family"), textos)
         familias = details.get("families")
         if isinstance(familias, (list, tuple)):
             textos.extend(str(item) for item in familias)
@@ -300,7 +315,7 @@ def _desde_props(props, d, textos):
     if isinstance(mod, dict):
         entradas = ["text"]
         for clave, modalidad in (("vision", "image"), ("audio", "audio"), ("video", "video")):
-            if props.get("modalities", {}).get(clave):
+            if mod.get(clave):
                 entradas.append(modalidad)
         if len(entradas) > 1:
             entradas = [m for m in MODALITIES if m in entradas]
@@ -318,10 +333,7 @@ def _desde_props(props, d, textos):
     ajustes = props.get("default_generation_settings")
     if isinstance(ajustes, dict):
         params = ajustes.get("params") or {}
-        for clave in ("n_ctx", "ctx_size"):
-            if isinstance(params.get(clave), int) and params[clave] > 0:
-                d.ofrecer("limit.context", params[clave], f"GET /props ({clave})")
-                break
+        _contexto_de(d, params, ("n_ctx", "ctx_size"), "GET /props ({})")
 
     if props.get("model_path"):
         textos.append(_nombre_del_repo(str(props["model_path"])))
@@ -355,18 +367,14 @@ def _desde_show(show, d, textos):
         except ValueError:
             parametros = None
     if isinstance(parametros, dict):
-        for clave in ("num_ctx", "n_ctx", "context"):
-            if isinstance(parametros.get(clave), int) and parametros[clave] > 0:
-                d.ofrecer("limit.context", parametros[clave], "POST /api/show (parameters)")
-                break
+        _contexto_de(d, parametros, ("num_ctx", "n_ctx", "context"),
+                     "POST /api/show (parameters)")
         if parametros.get("mmproj") or parametros.get("clip_model_path"):
             d.ofrecer("modalities.input", _con("image"), "POST /api/show (mmproj)")
 
     detalles = show.get("details")
     if isinstance(detalles, dict):
-        for clave in ("family", "format"):
-            if detalles.get(clave):
-                textos.append(str(detalles[clave]))
+        _textos_de(detalles, ("family", "format"), textos)
     if show.get("model"):
         textos.append(str(show["model"]))
 

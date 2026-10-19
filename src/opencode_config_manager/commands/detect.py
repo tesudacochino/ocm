@@ -14,8 +14,8 @@ from ..cache_models import normalize_models
 from ..config import Colors, ConfigManager, ConfigUI
 from ..deteccion import (CLAVE_DETECTADO, CLAVE_FUENTES, Explorador,
                          detectar_opciones, marca_detectada)
-from ..model_fields import format_value, get_value, set_value, visible_fields
-from .model import _pick_from_list, resolve_provider
+from ..model_fields import es_vacio, format_value, get_value, set_value, visible_fields
+from .utils import pick_from_list, resolve_provider
 
 # Lo que se puede detectar: todo menos el nombre visible, que lo pone alguien
 CAMPOS = tuple(spec for spec in visible_fields(True) if spec.key != "name")
@@ -23,13 +23,9 @@ _ANCHO_CAMPO = max(len(spec.key) for spec in CAMPOS) + 2
 _ANCHO_VALOR = 18
 
 
-def _vacio(valor) -> bool:
-    return valor is None or valor == [] or valor == {} or valor == ""
-
-
 def _texto_valor(spec, valor) -> str:
     """Como se pinta el valor de un campo en la tabla (sin color, para que alinee)."""
-    if _vacio(valor):
+    if es_vacio(valor):
         return "-"
     return format_value(spec, valor)
 
@@ -53,7 +49,7 @@ def filas_de_un_modelo(entrada_cache: dict, det) -> list:
             continue
         actual = get_value(entrada_cache or {}, spec.key)
         nuevo = det.valores[spec.key]
-        if _vacio(actual):
+        if es_vacio(actual):
             accion = "anade"
         elif actual == nuevo:
             accion = "igual"
@@ -105,7 +101,7 @@ def _seleccionar(args, modelos: dict, provider: str) -> list:
         return [pedido]
     if getattr(args, "all", False) or len(ids) == 1:
         return ids
-    elegido = _pick_from_list(ids, "modelo")
+    elegido = pick_from_list(ids, "modelo")
     return [elegido] if elegido else []
 
 

@@ -15,7 +15,9 @@ from ..deteccion import (CLAVE_DETECTADO, CLAVE_FUENTES, CLAVE_MOTOR,
                          CLAVE_MOTOR_ANTERIOR, CLAVE_MOTOR_EVIDENCIA)
 from ..model_fields import (
     EFFECTIVE_DEFAULTS,
+    WIZARD_OWNED_KEYS,
     describe_model,
+    es_vacio,
     format_value,
     get_value,
     serialize_model,
@@ -27,64 +29,16 @@ from .utils import (
     ETIQUETA_FUENTE,
     create_backup,
     estado_tipo,
+    pick_from_list,
     provider_entry_from_config,
     refresh_cache_from_config,
+    resolve_provider,
 )
 
 
 def _cache_entry(manager: ConfigManager, provider: str) -> dict:
     manager.load_cache()
     return manager.cache_data.get("providers", {}).get(provider)
-
-
-def _pick_from_list(items: list, label: str):
-    """Menú numerado simple. Devuelve el item elegido o None."""
-    if not items:
-        return None
-    if len(items) == 1:
-        print(f"{label}: {items[0]}")
-        return items[0]
-
-    print(f"Selecciona {label}:")
-    for index, item in enumerate(items, start=1):
-        print(f"  {index}) {item}")
-    while True:
-        raw = ConfigUI.ask_input("Opción", "1")
-        if raw.isdigit() and 1 <= int(raw) <= len(items):
-            return items[int(raw) - 1]
-        ConfigUI.print_warning("Numero fuera de rango.")
-
-
-def resolve_provider(manager: ConfigManager, provider: str = None,
-                     extra_names=None) -> str:
-    """Resolver el provider por argumento o preguntando entre los conocidos.
-
-    Args:
-        extra_names: nombres adicionales a ofrecer, para los providers que solo
-            existen en el bloque 'providers' y aun asi se quieren listar.
-    """
-    manager.load_cache()
-    manager.load_config()
-
-    names = sorted(set(manager.cache_data.get("providers", {})) |
-                   set(k for k, v in (manager.config_data.get("provider", {}) or {}).items()
-                       if isinstance(v, dict)) |
-                   set(extra_names or []))
-
-    if provider:
-        if provider in names:
-            return provider
-        ConfigUI.print_error(f"Provider '{provider}' no encontrado.")
-        print("Providers conocidos:")
-        for name in names:
-            print(f"  - {name}")
-        return None
-
-    if not names:
-        ConfigUI.print_error("No hay providers. Ejecuta: ocm new")
-        return None
-
-    return _pick_from_list(names, "provider")
 
 
 def _sync_config_name(manager: ConfigManager, provider: str, model_id: str, name: str) -> bool:
@@ -164,11 +118,6 @@ def cmd_model_list(manager: ConfigManager, args):
 
 # ───────────────────────────────────────────────────────────── ficha de modelo --
 
-# Claves que gestiona el asistente. Es la misma formula que WIZARD_OWNED_KEYS de
-# commands/options.py, repetida a proposito: options importa este modulo y
-# importar al reves cerraria un circulo.
-_PROPIAS = frozenset(spec.key.split(".")[0] for spec in visible_fields(True)) | {"name"}
-
 # Los campos que salen siempre en la ficha, tengan valor o no
 _NUCLEALES = frozenset(spec.key for spec in visible_fields(False)) - {"name"}
 
@@ -225,7 +174,7 @@ def _filas_opciones(entrada: dict, avanzado: bool, fuentes: dict = None):
             continue  # sale arriba, en la identidad del modelo
 
         valor = get_value(entrada, spec.key)
-        vacio = valor is None or valor == "" or valor == [] or valor == {}
+        vacio = es_vacio(valor)
         if vacio and spec.key not in _NUCLEALES and not avanzado:
             continue  # sin --advanced, las avanzadas vacias no ocupan sitio
 
@@ -289,7 +238,7 @@ def cmd_model_info(manager: ConfigManager, args):
         print(f"Ejecuta: ocm cache update {provider}")
         return
 
-    model_buscado = getattr(args, "model", None) or _pick_from_list(ids, "modelo")
+    model_buscado = getattr(args, "model", None) or pick_from_list(ids, "modelo")
     if not model_buscado:
         return
     if model_buscado not in ids:
@@ -315,7 +264,7 @@ def cmd_model_info(manager: ConfigManager, args):
     efectiva = dict(en_plural or {})
     efectiva.update(en_config or {})
     for clave, valor in serializada.items():
-        if clave in _PROPIAS:
+        if clave in WIZARD_OWNED_KEYS:
             efectiva[clave] = valor
     efectiva.setdefault("name", (en_cache or en_config or en_plural or {}).get("name") or model_id)
 
@@ -415,7 +364,7 @@ def cmd_model_info(manager: ConfigManager, args):
     _filas_opciones(efectiva, bool(getattr(args, "advanced", False)),
                     fuentes=(en_cache or {}).get(CLAVE_FUENTES) or {})
 
-    ajenas = sorted((set(en_cache or {}) | set(en_config or {})) - _PROPIAS)
+    ajenas = sorted((set(en_cache or {}) | set(en_config or {})) - WIZARD_OWNED_KEYS)
     ajenas = [c for c in ajenas if c not in (CLAVE_FUENTES, CLAVE_DETECTADO)]
     ajenas = [c for c in ajenas if not (c == "id" and (en_cache or en_config or {}).get(c) == model_id)]
     if ajenas:
@@ -438,7 +387,7 @@ def cmd_model_info(manager: ConfigManager, args):
 
     if en_cache and en_config:
         diferencias = []
-        for clave in sorted(_PROPIAS):
+        for clave in sorted(WIZARD_OWNED_KEYS):
             esperado = serializada.get(clave)
             actual = en_config.get(clave)
             if esperado is None and actual is None:
@@ -488,7 +437,7 @@ def cmd_model_rename(manager: ConfigManager, args):
     configured = provider_entry_from_config(manager, provider).get("models", {}) or {}
     candidates = list(models) + [m for m in configured if m not in models]
 
-    model_id = getattr(args, "model", None) or _pick_from_list(candidates, "modelo")
+    model_id = getattr(args, "model", None) or pick_from_list(candidates, "modelo")
     if not model_id:
         ConfigUI.print_error("Este provider no tiene modelos.")
         return
@@ -569,7 +518,7 @@ def cmd_model_remove(manager: ConfigManager, args):
         if not ids:
             ConfigUI.print_error(f"'{provider}' no tiene modelos que quitar.")
             return
-        model_id = _pick_from_list(ids, "modelo a quitar")
+        model_id = pick_from_list(ids, "modelo a quitar")
     if not model_id:
         return
 

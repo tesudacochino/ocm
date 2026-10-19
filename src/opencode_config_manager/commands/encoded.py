@@ -21,6 +21,7 @@ from .utils import (
     create_backup,
     merge_provider_config,
     provider_entry_from_config,
+    url_para_cache,
 )
 
 # Claves del formato codificado sin equivalencia en el formato singular
@@ -38,10 +39,9 @@ PACKAGE_TYPES = {
 
 def encoded_providers(manager: ConfigManager) -> dict:
     """Contenido del bloque `providers` (formato codificado de v2)."""
-    if not manager or manager.config_data is None:
+    if not manager:
         return {}
-    block = manager.config_data.get("providers")
-    return block if isinstance(block, dict) else {}
+    return encoded_providers_from_data(manager.config_data)
 
 
 def encoded_entry(manager: ConfigManager, provider: str) -> dict:
@@ -84,14 +84,6 @@ def encoded_providers_from_data(config_data: dict) -> dict:
         return {}
     block = config_data.get("providers")
     return block if isinstance(block, dict) else {}
-
-
-def _cache_url(url: str) -> str:
-    """URL para la caché: el config lleva /v1 y la caché no."""
-    text = (url or "").rstrip("/")
-    if text.endswith("/v1"):
-        text = text[: -len("/v1")]
-    return text.rstrip("/")
 
 
 def model_from_encoded(model_id: str, entry: dict) -> tuple:
@@ -284,7 +276,7 @@ def cache_entry_from_encoded(entry: dict, provider: str, provider_type: str = No
 
     base_url = settings.get("baseURL")
     if base_url:
-        cache_entry["baseUrl"] = _cache_url(base_url)
+        cache_entry["baseUrl"] = url_para_cache(base_url)
     if settings.get("apiKey"):
         cache_entry["apiKey"] = settings["apiKey"]
 

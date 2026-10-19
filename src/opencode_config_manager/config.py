@@ -193,13 +193,8 @@ class ConfigUI:
 
     @staticmethod
     def ask_input(prompt: str, default: str = "") -> str:
-        """Pregunta con valor por defecto."""
-        colored_prompt = ConfigUI._color(prompt, Colors.BOLD)
-        if default:
-            colored_default = ConfigUI._color(f"[{default}]", Colors.CYAN)
-            response = ConfigUI._read_line(f"{colored_prompt} {colored_default}: ")
-            return response or default
-        return ConfigUI._read_line(f"{colored_prompt}: ") or ""
+        """Pregunta con valor por defecto (Intro lo acepta)."""
+        return ConfigUI.ask_raw(prompt, default) or default or ""
 
     @staticmethod
     def _read_line(prompt: str):
@@ -261,24 +256,28 @@ class ConfigUI:
             ConfigUI.print_warning(f"Valor no valido. Escribe un numero entre 1 y {len(items)}.")
 
     @staticmethod
+    def _etiquetado(etiqueta: str, color: str, message: str):
+        print(f"{color}[{etiqueta}]{Colors.RESET} {message}")
+
+    @staticmethod
     def print_success(message: str):
         """Imprimir mensaje de éxito."""
-        print(f"{Colors.BRIGHT_GREEN}[OK]{Colors.RESET} {message}")
+        ConfigUI._etiquetado("OK", Colors.BRIGHT_GREEN, message)
 
     @staticmethod
     def print_error(message: str):
         """Imprimir mensaje de error."""
-        print(f"{Colors.BRIGHT_RED}[ERROR]{Colors.RESET} {message}")
+        ConfigUI._etiquetado("ERROR", Colors.BRIGHT_RED, message)
 
     @staticmethod
     def print_info(message: str):
         """Imprimir mensaje informativo."""
-        print(f"{Colors.BLUE}[INFO]{Colors.RESET} {message}")
+        ConfigUI._etiquetado("INFO", Colors.BLUE, message)
 
     @staticmethod
     def print_warning(message: str):
         """Imprimir mensaje de advertencia."""
-        print(f"{Colors.YELLOW}[WARNING]{Colors.RESET} {message}")
+        ConfigUI._etiquetado("WARNING", Colors.YELLOW, message)
 
     @staticmethod
     def print_header(text: str):

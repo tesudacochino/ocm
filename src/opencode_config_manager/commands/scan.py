@@ -24,7 +24,7 @@ from .utils import (
     ETIQUETA_FUENTE,
     OTRO_TIPO,
     estado_tipo,
-    normalizar_tipo,
+    parse_tipo_arg,
 )
 
 
@@ -106,12 +106,9 @@ def scan_single_provider(provider_name: str, cached_info: dict, manager: ConfigM
 
     pedido = None
     if tipo:
-        texto = str(tipo).strip().lower()
-        if texto != "auto":
-            pedido = normalizar_tipo(texto)
-            if not pedido:
-                ConfigUI.print_error(f"Tipo '{tipo}' desconocido; vale 'ollama', 'vllm' o 'auto'.")
-                return False
+        pedido, valido = parse_tipo_arg(tipo)
+        if not valido:
+            return False
 
     estado = estado_tipo(provider_name, cached_info, manager)
     guardado = estado["tipo"]

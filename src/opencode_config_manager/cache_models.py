@@ -20,33 +20,10 @@ formato v2 (ver `migrate_cache`).
 import time
 import uuid
 
-from .model_fields import canonical_key
+from .model_fields import MANAGED_MODEL_FIELDS, canonical_key
 
 CACHE_VERSION_KEY = "cache_version"
 CACHE_VERSION = 2
-
-# Opciones de modelo que ocm sabe escribir en opencode.json.
-# Son las claves validas de ModelConfig en https://opencode.ai/config.json
-MANAGED_MODEL_FIELDS = (
-    "id",
-    "name",
-    "family",
-    "release_date",
-    "attachment",
-    "reasoning",
-    "temperature",
-    "tool_call",
-    "interleaved",
-    "cost",
-    "limit",
-    "modalities",
-    "experimental",
-    "status",
-    "provider",
-    "options",
-    "headers",
-    "variants",
-)
 
 
 def _clean_entry(model_id: str, data) -> dict:
@@ -242,7 +219,11 @@ def adopt_model_options(cache_entry: dict, config_models: dict) -> bool:
 
 
 def ensure_uid(cache_entry: dict) -> str:
-    """Garantizar que el provider de caché tenga un uid estable."""
+    """Garantizar que el provider de caché tenga un uid estable.
+
+    Es lo que permite borrar el provider y volver a crearlo con el mismo nombre sin
+    perder las opciones guardadas.
+    """
     uid_value = cache_entry.get("uid")
     if not uid_value:
         uid_value = uuid.uuid4().hex[:8]
@@ -269,9 +250,7 @@ def migrate_cache(cache_data: dict) -> bool:
                 cache_entry["models"] = normalize_models(models)
                 migrated = True
             if not cache_entry.get("uid"):
-                # Identificador estable: permite borrar el provider y volver a
-                # crearlo con el mismo nombre sin perder las opciones guardadas
-                cache_entry["uid"] = uuid.uuid4().hex[:8]
+                ensure_uid(cache_entry)
                 migrated = True
 
     cache_data[CACHE_VERSION_KEY] = CACHE_VERSION
