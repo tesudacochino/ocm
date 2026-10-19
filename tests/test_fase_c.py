@@ -7,8 +7,6 @@ Salida:    lista de checks + codigo de salida 1 si alguno falla.
 No necesita pytest ni red: trabaja contra una caché y un opencode.json temporales.
 """
 
-import io
-import json
 import shutil
 import sys
 import tempfile
@@ -16,33 +14,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from opencode_config_manager.cli import main  # noqa: E402
 import entorno  # noqa: E402
+from entorno import CHECKS, backups, check, feed, read, run, write_json  # noqa: E402
 
 entorno.sin_registro_models_dev()
-
-CHECKS = []
-
-
-def check(cond, label):
-    print(("  OK    " if cond else "  FALLO ") + label)
-    CHECKS.append((bool(cond), label))
-
-
-def run(home, config, *argv):
-    return main(["--home", str(home), "--config", str(config), *argv])
-
-
-def read(path):
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def write_json(path, data):
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-
-
-def feed(*answers):
-    sys.stdin = io.StringIO("\n".join(answers) + "\n")
 
 
 def base_config():
@@ -115,10 +90,6 @@ def setup(home):
     write_json(config, base_config())
     write_json(home / "provider_cache.json", base_cache())
     return config
-
-
-def backups(home, config):
-    return sorted(config.parent.glob(config.name + ".bak.*"))
 
 
 # --------------------------------------------------------------------- C1 -- --

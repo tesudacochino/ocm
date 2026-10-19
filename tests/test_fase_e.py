@@ -13,7 +13,6 @@ Cubre lo que las fases anteriores dejaron suelto:
 """
 
 import io
-import json
 import re
 import shutil
 import sys
@@ -25,22 +24,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from opencode_config_manager import api  # noqa: E402
 from opencode_config_manager.api import ScanResult  # noqa: E402
-from opencode_config_manager.cli import main  # noqa: E402
 import entorno  # noqa: E402
+from entorno import CHECKS, backups, check, read, run, write_json  # noqa: E402
 
 entorno.sin_registro_models_dev()
-
-CHECKS = []
 RAIZ = Path(__file__).resolve().parents[1]
-
-
-def check(cond, label):
-    print(("  OK    " if cond else "  FALLO ") + label)
-    CHECKS.append((bool(cond), label))
-
-
-def run(home, config, *argv):
-    return main(["--home", str(home), "--config", str(config), *argv])
 
 
 def run_cap(home, config, *argv):
@@ -51,18 +39,6 @@ def run_cap(home, config, *argv):
     except SystemExit:
         pass  # argparse sale con SystemExit en --version/--help
     return buffer.getvalue()
-
-
-def read(path):
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def write_json(path, data):
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-
-
-def feed(*answers):
-    sys.stdin = io.StringIO("\n".join(answers) + "\n")
 
 
 def vecino_config():
@@ -203,10 +179,6 @@ def scenario_rename_without_config(home: Path, config: Path):
     conf = read(config)
     check(conf["provider"]["vecino"]["models"]["default"]["name"] == "El Del Vecino",
           "E2: si estaba en opencode.json, ahi queda aplicado tambien")
-
-
-def backups(home, config):
-    return sorted(config.parent.glob(config.name + ".bak.*"))
 
 
 # ------------------------------------------------------------------ migracion v1 --

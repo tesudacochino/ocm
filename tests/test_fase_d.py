@@ -10,7 +10,6 @@ forma singular, que es la que funciona.
 """
 
 import io
-import json
 import shutil
 import sys
 import tempfile
@@ -19,7 +18,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from opencode_config_manager.cli import main  # noqa: E402
 import entorno  # noqa: E402
 
 entorno.sin_registro_models_dev()
@@ -28,17 +26,7 @@ from opencode_config_manager.commands.encoded import (  # noqa: E402
     model_from_encoded,
     provider_from_encoded,
 )
-
-CHECKS = []
-
-
-def check(cond, label):
-    print(("  OK    " if cond else "  FALLO ") + label)
-    CHECKS.append((bool(cond), label))
-
-
-def run(home, config, *argv):
-    return main(["--home", str(home), "--config", str(config), *argv])
+from entorno import CHECKS, backups, check, feed, read, run, write_json  # noqa: E402
 
 
 def run_cap(home, config, *argv):
@@ -47,22 +35,6 @@ def run_cap(home, config, *argv):
     with redirect_stdout(buffer):
         run(home, config, *argv)
     return buffer.getvalue()
-
-
-def read(path):
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def write_json(path, data):
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-
-
-def feed(*answers):
-    sys.stdin = io.StringIO("\n".join(answers) + "\n")
-
-
-def backups(home, config):
-    return sorted(config.parent.glob(config.name + ".bak.*"))
 
 
 LEGADO_MODEL = {

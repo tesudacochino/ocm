@@ -9,57 +9,22 @@ ocm que solo decide que endpoint se escanea. Los escaneos van parcheados, asi qu
 no se toca la red.
 """
 
-import io
 import json
 import shutil
 import sys
 import tempfile
-from contextlib import redirect_stdout
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from opencode_config_manager import api  # noqa: E402
 from opencode_config_manager.api import ScanResult  # noqa: E402
-from opencode_config_manager.cli import main  # noqa: E402
 import entorno  # noqa: E402
 
 entorno.sin_registro_models_dev()
 from opencode_config_manager.commands.utils import url_para_config  # noqa: E402
-
-CHECKS = []
+from entorno import CHECKS, check, feed, read, run, run_cap, write_json  # noqa: E402
 SCHEMA = "https://opencode.ai/config.json"
-
-
-def check(cond, label):
-    print(("  OK    " if cond else "  FALLO ") + label)
-    CHECKS.append((bool(cond), label))
-
-
-def run(home, config, *argv):
-    return main(["--home", str(home), "--config", str(config), *argv])
-
-
-def run_cap(home, config, *argv):
-    buffer = io.StringIO()
-    try:
-        with redirect_stdout(buffer):
-            run(home, config, *argv)
-    except SystemExit:
-        pass
-    return buffer.getvalue()
-
-
-def read(path):
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def write_json(path, data):
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-
-
-def feed(*answers):
-    sys.stdin = io.StringIO("\n".join(answers) + "\n")
 
 
 # ------------------------------------------------------------------ fixtures --

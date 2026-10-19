@@ -14,7 +14,6 @@ Finge el transporte igual que la Fase G (misma clase prestada), asi que aqui tam
 se toca la red: los servidores falsos contestan lo que pone en cada prueba.
 """
 
-import io
 import shutil
 import sys
 import tempfile
@@ -26,15 +25,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import entorno  # noqa: E402
 from opencode_config_manager import deteccion  # noqa: E402
-from test_fase_g import (CHECKS, ServidorFalso, check,  # noqa: E402
-                        modelos_ollama, modelos_vllm, read, run, run_cap, write_json)
+from entorno import CHECKS, check, feed, read, run, run_cap, write_json  # noqa: E402
+from servidor_falso import ServidorFalso, modelos_ollama, modelos_vllm  # noqa: E402
 
 URL = "http://127.0.0.1:59999"
 SCHEMA = "https://opencode.ai/config.json"
-
-
-def feed(*answers):
-    sys.stdin = io.StringIO("\n".join(answers) + "\n")
 
 
 def cache_local(modelos, extra=None):

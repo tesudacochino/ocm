@@ -19,15 +19,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from opencode_config_manager.cli import main  # noqa: E402
 import entorno  # noqa: E402
+from entorno import CHECKS, check, read, run  # noqa: E402
 
 entorno.sin_registro_models_dev()
 
 PORT = 11499
 DEAD_PORT = 11498
 STATE = {"auth": [], "models": ["model-a", "model-b"]}
-CHECKS = []
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -45,19 +44,6 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_response(404)
             self.end_headers()
-
-
-def check(cond, label):
-    print(("  OK    " if cond else "  FALLO ") + label)
-    CHECKS.append((bool(cond), label))
-
-
-def run(home, config, *argv):
-    return main(["--home", str(home), "--config", str(config), *argv])
-
-
-def read(path):
-    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def scenario_no_destructivo(home: Path):

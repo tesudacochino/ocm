@@ -26,7 +26,7 @@ from opencode_config_manager.config import Colors, ConfigManager, ConfigUI
 from opencode_config_manager.commands.configure import cmd_configure
 from opencode_config_manager.commands.provider import cmd_provider_new
 from opencode_config_manager.commands.scan import scan_single_provider
-from test_fase_g import ServidorFalso, modelos_vllm
+from servidor_falso import ServidorFalso, modelos_vllm
 
 CHECKS = []
 TRANSCRIPT = []
