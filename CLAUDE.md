@@ -38,7 +38,8 @@ opencodeconfig/
 │       ├── cache.py           # cache show/clear/type
 │       ├── detect.py          # ocm model detect: preguntar al servidor y proponer
 │       └── debug.py           # debug config, validate_config
-├── tests/                      # Regresiones: test_fase_a..h.py (scripts sueltos) + entorno.py
+├── tests/                      # Regresiones: test_fase_a..h.py (scripts sueltos);
+│                               #   entorno.py (check/run/read/... comunes), servidor_falso.py
 ├── scripts/
 │   ├── ccl                    # Wrapper Linux/macOS
 │   ├── ccl.bat                # Wrapper Windows
@@ -116,6 +117,10 @@ servidor en el ultimo escaneo). Reglas en `scan_single_provider`:
   `merge_provider_config` sin `--force`; un nombre puesto a mano no se toca. Solo es
   etiqueta: la clave del modelo, lo que viaja a la API, no cambia
 - `get_provider_type()` con alias (`llama.cpp`, `lmstudio`, ...)
+- `parse_tipo_arg()` / `ask_tipo_menu()`: unico sitio donde se interpreta `--type` y se
+  ofrece el menu del tipo; `url_para_cache()` es la inversa de `url_para_config()`
+- `pick_from_list()` / `resolve_provider()`: seleccion de provider/modelo que comparten
+  `model`, `options`, `detect` y `configure` (los comandos no se importan entre si)
 
 **`model_fields.py`** - Que se puede configurar en un modelo (unica fuente de verdad):
 - `FIELDS`: lista de `FieldSpec(key, label, kind, help, presets, advanced, depends_on)`
@@ -141,7 +146,7 @@ servidor en el ultimo escaneo). Reglas en `scan_single_provider`:
 - `apply_assignments()` es la via no interactiva (`--set clave=valor`)
 - `sync_model_config(..., changed_keys)` escribe en `opencode.json` **solo las
   claves que el usuario toco** (`changed_keys`) dentro de las que "posee" el
-  asistente (`WIZARD_OWNED_KEYS`); las borra si se quitaron. `options`, `variants`,
+  asistente (`WIZARD_OWNED_KEYS`, en `model_fields.py`); las borra si se quitaron. `options`, `variants`,
   `cost`, `headers` son ajenas y no se tocan nunca. Si el modelo no estaba en el
   config se crea con todo lo de la caché
 - `commands/utils.py::refresh_cache_from_config()` adopta en la caché las opciones
