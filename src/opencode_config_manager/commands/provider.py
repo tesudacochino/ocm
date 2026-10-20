@@ -312,7 +312,9 @@ def cmd_provider_new(manager: ConfigManager, args):
 
     if not provider_type:
         ConfigUI.print_error(f"No se pudo detectar el provider en {base_url}")
-        ConfigUI.print_error("Verifica que el servicio esté corriendo.")
+        for endpoint, motivo in (prueba.errores or {}).items():
+            print(f"  {endpoint}: {str(motivo)[:200]}")
+        ConfigUI.print_error("Verifica la URL (¿puerto?), la API key y que el servicio esté corriendo.")
         if not ConfigUI.ask_yes_no("¿Crear el provider de todos modos (sin modelos)?", default="n"):
             print("Operación cancelada.")
             return

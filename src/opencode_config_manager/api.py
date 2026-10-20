@@ -6,6 +6,15 @@ from dataclasses import dataclass, field
 
 import requests
 
+# requests lleva su propio certifi y no ve la CA interna que IT instala en el sistema
+# (un nginx con certificado propio daba CERTIFICATE_VERIFY_FAILED): se usa el almacen
+# del sistema. Si no esta instalado, queda el comportamiento normal de requests.
+try:
+    import truststore
+    truststore.inject_into_ssl()
+except ImportError:         # pragma: no cover
+    pass
+
 # Los dos endpoints que distinguen un servidor del otro
 ENDPOINT_OLLAMA = "/api/tags"
 ENDPOINT_VLLM = "/v1/models"
@@ -57,6 +66,15 @@ def _pedir_json(enviar, endpoint: str):
         response = enviar()
         response.raise_for_status()
         return response.json(), None
+    except requests.exceptions.HTTPError as error:
+        codigo = error.response.status_code if error.response is not None else None
+        if codigo in (401, 403):
+            return None, (f"{endpoint} rechazo la API key (HTTP {codigo}): "
+                          "revisala con 'ocm configure'")
+        return None, str(error)
+    except requests.exceptions.SSLError as error:
+        return None, (f"{endpoint}: certificado no confiable ({error}); instala la CA "
+                      "de la empresa en el sistema")
     except requests.exceptions.RequestException as error:
         return None, str(error)
     except ValueError:          # cuerpo que no es JSON
