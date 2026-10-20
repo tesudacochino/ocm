@@ -1,11 +1,12 @@
 [project]
 name = "opencode-config-manager"
-version = "2.1.1"
+version = "2.1.2"
 description = "Gestor de providers locales para opencode"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "requests>=2.31.0",
+    "truststore>=0.10.5",
 ]
 
 [project.scripts]

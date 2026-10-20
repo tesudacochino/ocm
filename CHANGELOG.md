@@ -3,6 +3,19 @@
 Formato [Keep a Changelog](https://keepachangelog.com/es/1.1.0/), versionado
 [SemVer](https://semver.org/lang/es/).
 
+## [2.1.2] - 2026-10-20
+
+Soporte para providers detrás de un proxy HTTPS con certificado de una CA interna y API key.
+
+### Corregido
+
+- Los escaneos usan el almacén de certificados del sistema (`truststore`) en vez del
+  certifi de `requests`: una CA instalada por IT ya no da `CERTIFICATE_VERIFY_FAILED`.
+- Un 401/403 se explica como API key rechazada, y un fallo de certificado como CA no
+  confiable, en vez del texto crudo de la excepción.
+- `ocm new` enseña por qué falló la detección (error de cada endpoint) y sugiere revisar
+  URL, puerto y API key.
+
 ## [2.1.1] - 2026-10-19
 
 Arreglos de `ocm model detect` salidos de probarlo contra providers reales.

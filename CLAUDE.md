@@ -68,6 +68,9 @@ opencodeconfig/
   pruebas (o en un caso raro) sigue afectando a lo que detecta
 - exigimos la FORMA del JSON, no solo el 200: sin `models` no es ollama y sin `data`
   no es vllm (un proxy que devuelve una pagina ya no se confunde con un provider)
+- `import truststore` al cargar `api.py`: las peticiones confian en el almacen de
+  certificados del sistema (CA interna de empresa), no solo en certifi. `_pedir_json`
+  traduce 401/403 y SSLError a mensajes con la causa
 - `_get_json()` captura RequestException **y** ValueError: un 200 con HTML devuelve
   error en vez de reventar
 - ollama tambien sirve `/v1/models`, asi que lo unico que lo distingue es `/api/tags`
