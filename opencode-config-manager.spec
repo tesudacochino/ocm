@@ -6,6 +6,7 @@ a = Analysis(
     binaries=[],
     datas=[],
     hiddenimports=[
+        'truststore',
         'opencode_config_manager',
         'opencode_config_manager._version',
         'opencode_config_manager.cli',

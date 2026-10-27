@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, ubuntu-24.04-arm]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -164,8 +164,94 @@ jobs:
           name: ocm-mac
           path: dist/ocm-mac
 
+  build-linux-arm:
+    needs: tests
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get short SHA
+        id: sha
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Inject version info
+        run: |
+          SHORT_SHA="${{ steps.sha.outputs.SHORT_SHA }}"
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "Version: $VERSION, Commit: $SHORT_SHA"
+          sed -i "s/__version__ = \".*\"/__version__ = \"$VERSION\"/" src/opencode_config_manager/_version.py
+          sed -i "s/__commit__ = \"dev\"/__commit__ = \"$SHORT_SHA\"/" src/opencode_config_manager/_version.py
+          cat src/opencode_config_manager/_version.py
+
+      - name: Build Linux ARM64 binary
+        run: uv run python -m PyInstaller --clean opencode-config-manager.spec --noconfirm
+
+      - name: Rename binary
+        run: mv dist/ocm dist/ocm-linux-arm64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ocm-linux-arm64
+          path: dist/ocm-linux-arm64
+
+
+  build-windows-arm:
+    needs: tests
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get short SHA
+        id: sha
+        shell: bash
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Inject version info
+        shell: bash
+        run: |
+          SHORT_SHA="${{ steps.sha.outputs.SHORT_SHA }}"
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "Version: $VERSION, Commit: $SHORT_SHA"
+          sed -i.bak "s/__version__ = \".*\"/__version__ = \"$VERSION\"/" src/opencode_config_manager/_version.py
+          sed -i.bak "s/__commit__ = \"dev\"/__commit__ = \"$SHORT_SHA\"/" src/opencode_config_manager/_version.py
+          rm -f src/opencode_config_manager/_version.py.bak
+          cat src/opencode_config_manager/_version.py
+
+      - name: Build Windows ARM64 binary
+        run: uv run python -m PyInstaller --clean opencode-config-manager.spec --noconfirm
+
+      - name: Rename binary
+        shell: bash
+        run: mv dist/ocm.exe dist/ocm-windows-arm64.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ocm-windows-arm64
+          path: dist/ocm-windows-arm64.exe
+
+
   release:
-    needs: [tests, build-windows, build-linux, build-macos]
+    needs: [tests, build-windows, build-linux, build-macos, build-linux-arm, build-windows-arm]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -208,6 +294,8 @@ jobs:
             artifacts/ocm-windows/ocm.exe
             artifacts/ocm-linux/ocm-linux
             artifacts/ocm-mac/ocm-mac
+            artifacts/ocm-linux-arm64/ocm-linux-arm64
+            artifacts/ocm-windows-arm64/ocm-windows-arm64.exe
           draft: false
           body_path: release-body.md
         env:

@@ -3,6 +3,18 @@
 Formato [Keep a Changelog](https://keepachangelog.com/es/1.1.0/), versionado
 [SemVer](https://semver.org/lang/es/).
 
+## [2.1.3] - 2026-10-27
+
+### Añadido
+
+- Binarios ARM64 en cada release: `ocm-linux-arm64` y `ocm-windows-arm64.exe`
+  (`ocm-mac` ya era arm64, de Apple Silicon). Se compilan en runners ARM nativos y las
+  suites de regresión corren también en Linux ARM.
+
+### Corregido
+
+- `truststore` figura de forma explícita en los `hiddenimports` del `.spec`.
+
 ## [2.1.2] - 2026-10-20
 
 Soporte para providers detrás de un proxy HTTPS con certificado de una CA interna y API key.
