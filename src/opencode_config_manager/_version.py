@@ -3,7 +3,7 @@ Información de versión.
 En desarrollo se lee el hash de git. En compilado se inyecta por el build script.
 """
 
-__version__ = "2.1.2"
+__version__ = "2.1.3"
 __commit__ = "dev"
 
 

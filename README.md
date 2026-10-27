@@ -12,9 +12,9 @@ Gestor de providers locales para [opencode](https://opencode.ai). Permite gestio
 
 Descarga el binario desde [Releases](https://github.com/tesudacochino/ocm/releases) y colócalo en tu PATH:
 
-- **Windows:** `ocm.exe`
-- **Linux:** `ocm-linux`
-- **macOS:** `ocm-mac`
+- **Windows:** `ocm.exe` (x64) · `ocm-windows-arm64.exe`
+- **Linux:** `ocm-linux` (x64) · `ocm-linux-arm64`
+- **macOS:** `ocm-mac` (Apple Silicon)
 
 ### Desde código fuente
 

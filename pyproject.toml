@@ -1,6 +1,6 @@
 [project]
 name = "opencode-config-manager"
-version = "2.1.2"
+version = "2.1.3"
 description = "Gestor de providers locales para opencode"
 readme = "README.md"
 requires-python = ">=3.10"
